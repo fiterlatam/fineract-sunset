@@ -161,6 +161,7 @@ import org.apache.fineract.portfolio.loanaccount.service.LoanBlockReadPlatformSe
 import org.apache.fineract.portfolio.loanaccount.service.LoanChargeReadPlatformService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanDebtProjectionService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
+import org.apache.fineract.portfolio.loanaccount.service.LoanWritePlatformService;
 import org.apache.fineract.portfolio.loanproduct.LoanProductConstants;
 import org.apache.fineract.portfolio.loanproduct.data.LoanProductData;
 import org.apache.fineract.portfolio.loanproduct.data.MaximumCreditRateConfigurationData;
@@ -351,6 +352,8 @@ public class LoansApiResource {
     private final LoanDebtProjectionService loanDebtProjectionService;
     private final ConfigurationDomainServiceJpa configurationDomainServiceJpa;
     private final ReadWriteNonCoreDataService readWriteNonCoreDataService;
+    private final LoanWritePlatformService loanWritePlatformService;
+    private static final String DISBURSE_ACTION = "disburse";
 
     @GET
     @Path("{loanId}/template")
@@ -721,7 +724,7 @@ public class LoansApiResource {
             commandRequest = builder.rejectGLIMApplication(glimId).build();
         } else if (CommandParameterUtil.is(commandParam, "approve")) {
             commandRequest = builder.approveGLIMLoanApplication(glimId).build();
-        } else if (CommandParameterUtil.is(commandParam, "disburse")) {
+        } else if (CommandParameterUtil.is(commandParam, DISBURSE_ACTION)) {
             commandRequest = builder.disburseGlimLoanApplication(glimId).build();
         } else if (CommandParameterUtil.is(commandParam, "glimrepayment")) {
             commandRequest = builder.repaymentGlimLoanApplication(glimId).build();
@@ -1400,7 +1403,7 @@ public class LoansApiResource {
         final List<DatatableData> datatableNamesList = this.readWriteNonCoreDataService.retrieveDatatableNames("m_loan");
         datatableNamesList.stream().forEach(name -> {
             GenericResultsetData results = this.readWriteNonCoreDataService.retrieveDataTableGenericResultSet(name.getRegisteredTableName(),
-                    loanId, "", null);
+                    resolvedLoanId, "", null);
 
             name.setColumnHeaderData(null);
 
@@ -1446,7 +1449,7 @@ public class LoansApiResource {
             final String apiRequestBodyAsJson) {
         ExternalId loanExternalId = ExternalIdFactory.produce(loanExternalIdStr);
         Long resolvedLoanId = getResolvedLoanId(loanId, loanExternalId);
-        final CommandWrapperBuilder builder = new CommandWrapperBuilder().withJson(apiRequestBodyAsJson);
+        CommandWrapperBuilder builder = new CommandWrapperBuilder().withJson(apiRequestBodyAsJson);
         CommandWrapper commandRequest = null;
         if (CommandParameterUtil.is(commandParam, "reject")) {
             commandRequest = builder.rejectLoanApplication(resolvedLoanId).build();
@@ -1454,7 +1457,7 @@ public class LoansApiResource {
             commandRequest = builder.withdrawLoanApplication(resolvedLoanId).build();
         } else if (CommandParameterUtil.is(commandParam, "approve")) {
             commandRequest = builder.approveLoanApplication(resolvedLoanId).build();
-        } else if (CommandParameterUtil.is(commandParam, "disburse")) {
+        } else if (CommandParameterUtil.is(commandParam, DISBURSE_ACTION)) {
             commandRequest = builder.disburseLoanApplication(resolvedLoanId).build();
         } else if (CommandParameterUtil.is(commandParam, "disburseToSavings")) {
             commandRequest = builder.disburseLoanToSavingsApplication(resolvedLoanId).build();
@@ -1478,6 +1481,11 @@ public class LoansApiResource {
             throw new UnrecognizedQueryParamException("command", commandParam);
         }
         CommandProcessingResult result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
+
+        // Check here if there is any pending reschedule request associated with this Credito Rotativo and approve it.
+        if (CommandParameterUtil.is(commandParam, DISBURSE_ACTION)) {
+            loanWritePlatformService.approveRescheduleRequest(loanId, result.getResourceId(), null);
+        }
 
         return this.toApiJsonSerializer.serialize(result);
     }

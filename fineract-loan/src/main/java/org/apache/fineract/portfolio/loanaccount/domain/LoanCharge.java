@@ -36,6 +36,7 @@ import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeCustomType;
 import org.apache.fineract.portfolio.charge.domain.ChargePaymentMode;
 import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.charge.exception.LoanChargeWithoutMandatoryFieldException;
@@ -375,7 +376,12 @@ public class LoanCharge extends AbstractAuditableWithUTCDateTimeCustom {
                     if (numberOfRepayments == null) {
                         numberOfRepayments = this.loan.fetchNumberOfInstallmensAfterExceptions();
                     }
+                    if (ChargeCalculationType.DISB_SEGO == chargeCalculationType) {
+                        // we do not want to update for disbursement based charge
+                        numberOfRepayments = 1;
+                    }
                     updateAmountOrPercentageForDistributedCharge(numberOfRepayments, this.amount);
+
                 }
             }
         }
@@ -1435,7 +1441,19 @@ public class LoanCharge extends AbstractAuditableWithUTCDateTimeCustom {
                 }
                 installmentCount = BigDecimal.valueOf(numberOfRepayments);
             }
+
+            // avoid NPE for scenario "new loan creation with empty charges" and adding 1st charge dynamically
+            if (Objects.isNull(outstandingBalance)) {
+                outstandingBalance = Money.of(getLoan().getCurrency(), amountPercentageAppliedTo);
+            }
+
             BigDecimal computedAmount = LoanCharge.percentageOf(outstandingBalance.getAmount(), this.percentage);
+
+            // If charge is Capital Pendiente, do not divide by nr of installments
+            if (this.getCharge().getName().contains(ChargeCustomType.CAPITAL_PENDIENTE_MI_PYME.getRootName())) {
+                installmentCount = BigDecimal.ONE;
+            }
+
             BigDecimal finalAmount = computedAmount.divide(installmentCount, 0, RoundingMode.HALF_UP);
             customAmout = customAmout.add(finalAmount);
         }

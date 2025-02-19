@@ -21,6 +21,7 @@ package org.apache.fineract.portfolio.loanaccount.service;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import jakarta.persistence.PersistenceException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoField;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -92,6 +94,10 @@ import org.apache.fineract.portfolio.calendar.domain.CalendarType;
 import org.apache.fineract.portfolio.calendar.exception.CalendarNotFoundException;
 import org.apache.fineract.portfolio.calendar.service.CalendarReadPlatformService;
 import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargePaymentMode;
+import org.apache.fineract.portfolio.charge.domain.ChargeRepository;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.client.domain.AccountNumberGenerator;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.client.domain.ClientRepositoryWrapper;
@@ -139,6 +145,7 @@ import org.apache.fineract.portfolio.loanproduct.data.MaximumCreditRateConfigura
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProduct;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRelatedDetail;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRepository;
+import org.apache.fineract.portfolio.loanproduct.domain.LoanProductType;
 import org.apache.fineract.portfolio.loanproduct.domain.RecalculationFrequencyType;
 import org.apache.fineract.portfolio.loanproduct.exception.LinkedAccountRequiredException;
 import org.apache.fineract.portfolio.loanproduct.exception.LoanProductNotFoundException;
@@ -152,6 +159,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.service.GSIMReadPlatformService;
 import org.apache.fineract.useradministration.domain.AppUser;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
@@ -173,6 +181,8 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
     public static final String REPAYMENT_FREQUENCY_NTH_DAY_TYPE_ID_PARAM = "repaymentFrequencyNthDayType";
     public static final String EXPECTED_DISBURSEMENT_DATE_PARAM = "expectedDisbursementDate";
     public static final String ERROR_MESSAGE_LABEL_LOAN_DISBURSAL_DATE = "error.msg.loan.disbursal.date.should.be.after.last.transaction.date.of.loan.to.be.closed";
+    public static final String PRINCIPAL_PARAM = "principal";
+    public static final String DISBURSEMENT_DATA_PARAM = "disbursementData";
     private final PlatformSecurityContext context;
     private final FromJsonHelper fromJsonHelper;
     private final LoanApplicationTransitionApiJsonValidator loanApplicationTransitionApiJsonValidator;
@@ -219,11 +229,12 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
     private final ClientAllyPointOfSalesRepository clientAllyPointOfSalesRepository;
 
     private final ConfigurationDomainServiceJpa configurationDomainServiceJpa;
+    private final ChargeRepository chargeRepository;
 
     @SuppressWarnings({ "squid:S3776" })
     @Transactional
     @Override
-    public CommandProcessingResult submitApplication(final JsonCommand command) {
+    public CommandProcessingResult submitApplication(JsonCommand command) {
 
         try {
             final Long clientId = this.fromJsonHelper.extractLongNamed(LoanApplicationWritePlatformServiceJpaRepositoryImpl.CLIENT_ID_PARAM,
@@ -282,6 +293,24 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                 officeSpecificLoanProductValidation(productId, group.getOffice().getId());
             }
 
+            // If product is Ctredito Rotativo, fill automatically expected disbursement date tranche details
+            if (loanProduct.getName().contains(LoanProductType.CREDITO_ROTATIVO.getCode())) {
+                final String expectedDisbursementDate = this.fromJsonHelper
+                        .extractStringNamed(LoanApiConstants.expectedDisbursementDateParameterName, command.parsedJson());
+
+                JsonObject parsedCommand = command.getParsedCommand().getAsJsonObject();
+
+                final JsonArray disbursementData = new JsonArray();
+                final JsonObject disbursementDataElement = new JsonObject();
+                disbursementDataElement.addProperty(EXPECTED_DISBURSEMENT_DATE_PARAM, expectedDisbursementDate);
+                disbursementDataElement.addProperty(PRINCIPAL_PARAM, BigDecimal.ONE.toString());
+                disbursementData.add(disbursementDataElement);
+                parsedCommand.add(DISBURSEMENT_DATA_PARAM, disbursementData);
+
+                // Add dynamic disbursal data to command
+                command = new JsonCommand(fromJsonHelper, parsedCommand.toString(), null, JsonParser.parseString(parsedCommand.toString()));
+            }
+
             this.fromApiJsonDeserializer.validateForCreate(command.json(), isMeetingMandatoryForJLGLoans, loanProduct);
 
             // Validate If the externalId is already registered
@@ -335,6 +364,9 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
             }
 
             final Loan newLoanApplication = this.loanAssembler.assembleFrom(command);
+
+            validateMicrocreditoProductCharges(newLoanApplication);
+
             this.validMaximumLegalInterestRate(newLoanApplication);
 
             checkForProductMixRestrictions(newLoanApplication);
@@ -401,6 +433,10 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                     newLoanApplication.setTopupLoanDetails(topupDetails);
                 }
             }
+
+            // Check the choosend date if is valid for Credit Rotativo (monhtly only)
+            validateAllowedDaysIfCreditoRotativo(newLoanApplication);
+
             validateAllChargesAreSetupCorrectly(newLoanApplication); // Just a remark here before calling validate
             this.loanRepositoryWrapper.saveAndFlush(newLoanApplication);
 
@@ -620,6 +656,25 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
             Throwable throwable = ExceptionUtils.getRootCause(dve.getCause());
             handleDataIntegrityIssues(command, throwable, dve);
             return CommandProcessingResult.empty();
+        }
+    }
+
+    private void validateAllowedDaysIfCreditoRotativo(Loan newLoanApplication) {
+        // If credito rotativo mensual, accepted repayment dates are 1,10,20
+        if (newLoanApplication.getLoanProduct().getName().equalsIgnoreCase(LoanProductType.CREDITO_ROTATIVO.getCode())) {
+            LocalDate expectedfirstRepaymentDate = newLoanApplication.getExpectedFirstRepaymentOnDate();
+
+            if (Objects.isNull(expectedfirstRepaymentDate)) {
+                throw new GeneralPlatformDomainRuleException("error.msg.loan.creditorotativo.first.repayment.date.mandatory",
+                        "First Repayment date shall be provided when product is Credito Rotativo");
+            } else {
+
+                if (expectedfirstRepaymentDate.getDayOfMonth() != 1 && expectedfirstRepaymentDate.getDayOfMonth() != 10
+                        && expectedfirstRepaymentDate.getDayOfMonth() != 20) {
+                    throw new GeneralPlatformDomainRuleException("error.msg.loan.creditorotativo.first.repayment.date.must.be.day.1.10.20",
+                            "Disbursement date must be 1, 10 or 20");
+                }
+            }
         }
     }
 
@@ -994,7 +1049,8 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                             || (existingLoanTopupDetails != null && !existingLoanTopupDetails.getLoanIdToClose().equals(loanIdToClose))
                             || changes.containsKey("submittedOnDate")
                             || changes.containsKey(LoanApplicationWritePlatformServiceJpaRepositoryImpl.EXPECTED_DISBURSEMENT_DATE_PARAM)
-                            || changes.containsKey("principal") || changes.containsKey(LoanApiConstants.disbursementDataParameterName)) {
+                            || changes.containsKey(PRINCIPAL_PARAM)
+                            || changes.containsKey(LoanApiConstants.disbursementDataParameterName)) {
                         Long existingLoanIdToClose = null;
                         if (existingLoanTopupDetails != null) {
                             existingLoanIdToClose = existingLoanTopupDetails.getLoanIdToClose();
@@ -1964,48 +2020,73 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                 Charge charge = loanCharge.getCharge();
                 charge.validateChargeIsSetupCorrectly();
             }
-
-            validateMicrocreditoProductCharges(loan);
         }
     }
 
     private void validateMicrocreditoProductCharges(Loan loan) {
-        String filterCriteriaTmp = "capital pendiente";
 
         if (loan.getLoanProduct().getName().toLowerCase().contains(STRING_PRODUCT_MICROCREDITO.toLowerCase())) {
 
-            if (loan.getLoanProduct().getName().equalsIgnoreCase(STRING_PRODUCT_MICROCREDITO)
-                    || loan.getLoanProduct().getName().equalsIgnoreCase(STRING_PRODUCT_MICROCREDITO.concat(" m"))) {
-                filterCriteriaTmp = "comision";
+            final String filterCriteria = constructMiPymeChargeFilterCriteria(loan);
+
+            // Remove all mi pyme charges and leave only the ones that are not mi pyme
+            List<LoanCharge> removedMiPymeList = new ArrayList<>();
+            if (Objects.nonNull(loan.getLoanCharges())) {
+                removedMiPymeList = loan.getLoanCharges().stream().filter(
+                        name -> Boolean.FALSE.equals(name.getCharge().getName().toLowerCase().contains("capital pendientemi mi pyme"))
+                                && Boolean.FALSE.equals(name.getCharge().getName().toLowerCase().contains("comision mi pyme")))
+                        .collect(Collectors.toList());
             }
 
-            // Check if Comision Mi Pyme is set, depending on the Loan Amount against SMLV config and microcredito
-            // product
-            Long limit = configurationDomainServiceJpa.retrieveSMVLLimit();
-            if (loan.getProposedPrincipal().compareTo(new BigDecimal(limit)) >= 0) {
+            // Select appropriate charges given the microcredito product type (raw, B or M) AND amount
+            List<Charge> chargesList = chargeRepository.findByChargeAppliesToAndActive(1, true).stream()
+                    .filter(name -> Boolean.TRUE.equals(name.getName().toLowerCase().contains(filterCriteria))).filter(Charge::isActive)
+                    .sorted(Comparator.comparing(Charge::getParentChargeId)).toList();
 
-                final String filterCriteria = filterCriteriaTmp.concat(" mi pyme >= 4smlv");
+            // Insert new ones based on filter criteria
+            for (Charge curr : chargesList) {
+                final LoanCharge loanCharge = new LoanCharge(loan, curr, loan.getProposedPrincipal(), curr.getAmount(),
+                        ChargeTimeType.fromInt(curr.getChargeTimeType()), ChargeCalculationType.fromInt(curr.getChargeCalculation()),
+                        loan.getExpectedDisbursedOnLocalDate(), ChargePaymentMode.fromInt(curr.getChargePaymentMode()), null,
+                        BigDecimal.ZERO, null, false, null);
 
-                Long comissionPymeCounter = loan.getLoanCharges().stream()
-                        .filter(name -> name.getCharge().getName().toLowerCase().contains(filterCriteria)).count();
+                removedMiPymeList.add(loanCharge);
 
-                if (comissionPymeCounter.compareTo(2L) != 0) {
-                    throw new GeneralPlatformDomainRuleException("error.msg.loan.charge.smlv.incorrect",
-                            "Charges for this products are not set correctly");
-                }
-
-            } else {
-                final String filterCriteria = filterCriteriaTmp.concat(" mi pyme < 4smlv");
-
-                Long comissionPymeCounter = loan.getLoanCharges().stream()
-                        .filter(name -> name.getCharge().getName().toLowerCase().contains(filterCriteria)).count();
-
-                if (comissionPymeCounter.compareTo(2L) != 0) {
-                    throw new GeneralPlatformDomainRuleException("error.msg.loan.charge.smlv.incorrect",
-                            "Charges for this products are not set correctly");
+                // Needed to avoid NPE on scenario where no charges were passed at payload (.clear()) method)
+                if (Objects.isNull(loan.getLoanCharges())) {
+                    loan.addLoanCharge(loanCharge);
                 }
             }
 
+            // replace original payload´s charges list with the dynamic ones
+            loan.getLoanCharges().clear();
+            loan.getLoanCharges().addAll(removedMiPymeList);
+
+            loan.recalculateAllCharges();
+
+            loanRepository.save(loan);
         }
+    }
+
+    @NotNull
+    private String constructMiPymeChargeFilterCriteria(Loan loan) {
+        String filterCriteriaTmp = "capital pendiente";
+
+        if (loan.getLoanProduct().getName().equalsIgnoreCase(STRING_PRODUCT_MICROCREDITO)
+                || loan.getLoanProduct().getName().equalsIgnoreCase(STRING_PRODUCT_MICROCREDITO.concat(" m"))) {
+            filterCriteriaTmp = "comision";
+        }
+
+        filterCriteriaTmp = filterCriteriaTmp.concat(" mi pyme");
+
+        // Check if Comision Mi Pyme is set, depending on Loan Amount against SMLV config and microcredito product
+        Long limit = configurationDomainServiceJpa.retrieveSMVLLimit() * 4;
+
+        if (loan.getProposedPrincipal().compareTo(new BigDecimal(limit)) >= 0) {
+            filterCriteriaTmp = filterCriteriaTmp.concat(" >= 4smlv");
+        } else {
+            filterCriteriaTmp = filterCriteriaTmp.concat(" < 4smlv");
+        }
+        return filterCriteriaTmp;
     }
 }

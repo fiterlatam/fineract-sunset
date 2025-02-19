@@ -16,20 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.fineract.portfolio.loanaccount.rescheduleloan.domain;
+package org.apache.fineract.portfolio.charge.domain;
 
-import java.util.List;
-import java.util.Optional;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
-public interface LoanRescheduleRequestRepository
-        extends JpaRepository<LoanRescheduleRequest, Long>, JpaSpecificationExecutor<LoanRescheduleRequest> {
+@AllArgsConstructor
+@Getter
+public enum ChargeCustomType {
 
-    @Query("select lrr.loan.id from LoanRescheduleRequest lrr where lrr.id = :rescheduleRequestId")
-    Optional<Long> getLoanIdByRescheduleRequestId(@Param("rescheduleRequestId") Long rescheduleRequestId);
+    CAPITAL_PENDIENTE_MI_PYME("Capital Pendiente Mi Pyme"), //
+    ;
 
-    List<LoanRescheduleRequest> findByLoanId(Long loanId);
+    private final String rootName;
 }

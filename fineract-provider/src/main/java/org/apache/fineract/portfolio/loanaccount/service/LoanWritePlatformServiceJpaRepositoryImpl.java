@@ -228,6 +228,7 @@ import org.apache.fineract.portfolio.loanaccount.loanschedule.service.LoanSchedu
 import org.apache.fineract.portfolio.loanaccount.rescheduleloan.RescheduleLoansApiConstants;
 import org.apache.fineract.portfolio.loanaccount.rescheduleloan.data.LoanRescheduleRequestData;
 import org.apache.fineract.portfolio.loanaccount.rescheduleloan.domain.LoanRescheduleRequest;
+import org.apache.fineract.portfolio.loanaccount.rescheduleloan.domain.LoanRescheduleRequestRepository;
 import org.apache.fineract.portfolio.loanaccount.rescheduleloan.service.LoanRescheduleRequestReadPlatformService;
 import org.apache.fineract.portfolio.loanaccount.rescheduleloan.service.LoanRescheduleRequestWritePlatformService;
 import org.apache.fineract.portfolio.loanaccount.serialization.LoanApplicationCommandFromApiJsonHelper;
@@ -302,10 +303,10 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
     private static final String LOAN_TRANSACTION_DESCRIPTION = "Loan transaction:";
     private static final String LOAN_DESCRIPTION = "Loan: ";
     private static final String SUBMITTED_ON_DATE = "submittedOnDate";
-    private static final String EXTRA_TERMS = "extraTerms";
-    private static final String ADJUSTED_DUE_DATE_PARAM = "adjustedDueDate";
     private static final String APPROVED_DATE_PARAM = "approvedOnDate";
     private static final String GRACE_ON_PRINCIPAL_PARAM = "graceOnPrincipal";
+    private static final String ADJUSTED_DUE_DATE_PARAM = "adjustedDueDate";
+    private static final String EXTRA_TERMS = "extraTerms";
 
     private final PlatformSecurityContext context;
     private final LoanEventApiJsonValidator loanEventApiJsonValidator;
@@ -373,6 +374,7 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
     private final LoanDisbursementDetailsRepository loanDisbursementDetailsRepository;
     private final LoanRescheduleRequestWritePlatformService loanRescheduleRequestWritePlatformService;
     private final CodeValueReadPlatformService codeValueReadPlatformService;
+    private final LoanRescheduleRequestRepository loanRescheduleRequestRepository;
 
     @PostConstruct
     public void registerForNotification() {
@@ -463,6 +465,8 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
 
         // Fail fast if client/group is not active or actual loan status disallows disbursal
         checkClientOrGroupActive(loan);
+
+        // Fail fast if cupo is not enough
         checkCupo(loan);
 
         final LocalDate actualDisbursementDate = this.fromApiJsonHelper
@@ -470,74 +474,8 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
         final LocalDate nextPossibleRepaymentDate = loan.getNextPossibleRepaymentDateForRescheduling();
         final LocalDate rescheduledRepaymentDate = command.localDateValueOfParameterNamed("adjustRepaymentDate");
 
-        if (loan.getLoanProduct().isMultiDisburseLoan()) {
-
-            // If credito rotativo mensual, accepted repayment dates are 5,10,20
-            if (loan.getLoanProduct().getName().toLowerCase(Locale.ROOT)
-                    .contains(LoanProductType.CREDITO_ROTATIVO.getCode().toLowerCase(Locale.ROOT))
-                    && actualDisbursementDate.getDayOfMonth() != 5 && actualDisbursementDate.getDayOfMonth() != 10
-                    && actualDisbursementDate.getDayOfMonth() != 20) {
-
-                throw new GeneralPlatformDomainRuleException("error.msg.loan.disbursement.date.must.be.day.1.10.20",
-                        "Disbursement date must be 5, 10 or 20");
-            }
-
-            final BigDecimal principal = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed(
-                    LoanApiConstants.principalDisbursedParameterName, command.parsedJson().getAsJsonObject());
-
-            BigDecimal disbursementAmountSum = loanDisbursementDetailsRepository.findAllByLoanId(loanId).stream().map(x -> x.getPrincipal())
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal loanTransactionRepaymentSum = loanTransactionRepository.findAllByLoanIdAndTypeOf(loanId, 2).stream()
-                    .filter(nR -> !nR.isReversed()).map(x -> x.getPrincipalPortion()).reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal loanApprovedPrincipal = loan.getApprovedPrincipal();
-            if (disbursementAmountSum.add(principal).subtract(loanTransactionRepaymentSum).compareTo(loanApprovedPrincipal) > 0) {
-                throw new GeneralPlatformDomainRuleException("error.msg.loan.disbursement.exceeds.approved.principal",
-                        "Sum of Loan disbursements (".concat(String.valueOf(disbursementAmountSum)).concat(") + This one (")
-                                .concat(String.valueOf(principal)).concat(") - Repayments (")
-                                .concat(String.valueOf(loanTransactionRepaymentSum)).concat(") exceeds approved principal (")
-                                .concat(String.valueOf(loanApprovedPrincipal)).concat(")."));
-            }
-
-            Optional<LoanDisbursementDetails> loanDisbursementDetailsOpt = loanDisbursementDetailsRepository
-                    .findByLoanIdAndExpectedDisbursementDateAndPrincipal(loanId, actualDisbursementDate, principal);
-
-            if (loanDisbursementDetailsOpt.isEmpty()) {
-                LoanDisbursementDetails details = new LoanDisbursementDetails(actualDisbursementDate, actualDisbursementDate, principal,
-                        null, false);
-                details.updateLoan(loan);
-                loanDisbursementDetailsRepository.saveAndFlush(details);
-
-                loan = this.loanAssembler.assembleFrom(loanId);
-
-                List<CodeValueData> codeValueList = Lists
-                        .newArrayList(codeValueReadPlatformService.retrieveCodeValuesByCode("LoanRescheduleReason"));
-                Long loanRescheduleReasonId = codeValueList.stream().filter(p -> p.getName().equals("Nuevo desembolso de Crédito Rotativo"))
-                        .findFirst().orElseThrow(() -> new GeneralPlatformDomainRuleException("error.msg.loan.reschedule.reason.not.found",
-                                "Loan reschedule reason not found."))
-                        .getId();
-
-                // Check how many installments were paid
-                Integer productNrOfRepayments = loan.getLoanProduct().getNumberOfRepayments();
-                Long notPaidInstallmentNr = loan.getRepaymentScheduleInstallments().stream().filter(p -> !p.isObligationsMet()).count();
-                Integer nrOfInstallmentsToAdd = productNrOfRepayments - notPaidInstallmentNr.intValue();
-
-                try {
-                    // create a reschedule request with "increase nr of installments"
-                    JsonCommand createRescheduleRequestCommand = createResqueduleRequestAction(fromApiJsonHelper, null, loanId,
-                            actualDisbursementDate, loanRescheduleReasonId, nrOfInstallmentsToAdd);
-                    loanRescheduleRequestWritePlatformService.create(createRescheduleRequestCommand);
-
-                    loanRepository.saveAndFlush(loan);
-                    loan = this.loanAssembler.assembleFrom(loanId);
-
-                } catch (JsonProcessingException ex) {
-                    throw new GeneralPlatformDomainRuleException("error.msg.loan.does.cannot.create.extension",
-                            "Loan could not be automatically create and approve its extension.");
-                }
-            }
-        }
+        // Check if loan request is a Credito Rotativo and if so, apply its business rules
+        checkCreditoRotativo(command, loan, actualDisbursementDate);
 
         // validate if the loan product allows creation and disbursement
         if (Boolean.FALSE.equals(loan.loanProduct().getCustomAllowCreateOrDisburse())) {
@@ -4850,7 +4788,7 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
                     approvalJsonObject.addProperty(LoanWritePlatformServiceJpaRepositoryImpl.DATE_FORMAT_PARAM, dateFormat);
                     approvalJsonObject.addProperty(LoanWritePlatformServiceJpaRepositoryImpl.LOCALE_PARAM, locale);
                     approvalJsonObject.addProperty("isJobTriggered", isJobTriggered);
-                    approvalJsonObject.addProperty(APPROVED_DATE_PARAM, submittedOnDate);
+                    approvalJsonObject.addProperty("approvedOnDate", submittedOnDate);
                     final String approvalRequestBodyAsJson = approvalJsonObject.toString();
                     commandWrapper = new CommandWrapperBuilder()
                             .approveLoanRescheduleRequest(RescheduleLoansApiConstants.ENTITY_NAME, loanRescheduleId)
@@ -5024,7 +4962,7 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
         }
         for (DefaultOrCancelInsuranceInstallmentData data : defaultInsuranceIds) {
             Loan loan = this.loanAssembler.assembleFrom(data.loanId());
-            LoanCharge loanCharge;
+            LoanCharge loanCharge = null;
             Optional<LoanCharge> loanChargeOptional = loan.getLoanCharges().stream()
                     .filter(lc -> Objects.equals(lc.getId(), data.loanChargeId())).findFirst();
             if (loanChargeOptional.isPresent()) {
@@ -5088,7 +5026,7 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
         Long insuranceCode = command.longValueOfParameterNamed("codigoSeguro");
         LocalDate cancellationDate = command.localDateValueOfParameterNamed("date");
 
-        LoanCharge loanCharge;
+        LoanCharge loanCharge = null;
 
         Loan loan = this.loanAssembler.assembleFrom(loanId);
 
@@ -5254,8 +5192,153 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
 
     }
 
+    private void checkCreditoRotativo(JsonCommand command, Loan loan, LocalDate actualDisbursementDate) {
+        if (loan.getLoanProduct().isMultiDisburseLoan()) {
+            validateFirstRepaymentDate(loan);
+            BigDecimal principal = extractPrincipal(command);
+            validateDisbursementAmount(loan, principal);
+            processLoanDisbursementDetails(loan, actualDisbursementDate, principal);
+        }
+    }
+
+    private void validateFirstRepaymentDate(Loan loan) {
+        if (loan.getLoanProduct().getName().equalsIgnoreCase(LoanProductType.CREDITO_ROTATIVO.getCode())) {
+            LocalDate expectedFirstRepaymentDate = loan.getExpectedFirstRepaymentOnDate();
+            if (Objects.isNull(expectedFirstRepaymentDate)) {
+                throw new GeneralPlatformDomainRuleException("error.msg.loan.creditorotativo.first.repayment.date.mandatory",
+                        "First Repayment date shall be provided when product is Credito Rotativo");
+            } else if (expectedFirstRepaymentDate.getDayOfMonth() != 1 && expectedFirstRepaymentDate.getDayOfMonth() != 10
+                    && expectedFirstRepaymentDate.getDayOfMonth() != 20) {
+                throw new GeneralPlatformDomainRuleException("error.msg.loan..creditorotativo.first.repayment.date.must.be.day.1.10.20",
+                        "Disbursement date must be 1, 10 or 20");
+            }
+        }
+    }
+
+    private BigDecimal extractPrincipal(JsonCommand command) {
+        return this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed(LoanApiConstants.principalDisbursedParameterName,
+                command.parsedJson().getAsJsonObject());
+    }
+
+    private void validateDisbursementAmount(Loan loan, BigDecimal principal) {
+        BigDecimal disbursementAmountSum = loanDisbursementDetailsRepository.findAllByLoanId(loan.getId()).stream()
+                .filter(disbursed -> Objects.nonNull(disbursed.getDisbursementDate())).map(x -> x.getPrincipal())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal loanTransactionRepaymentSum = loanTransactionRepository.findAllByLoanIdAndTypeOf(loan.getId(), 2).stream()
+                .filter(nR -> !nR.isReversed()).map(x -> x.getPrincipalPortion()).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal loanApprovedPrincipal = loan.getApprovedPrincipal();
+
+        if (disbursementAmountSum.add(principal).subtract(loanTransactionRepaymentSum).compareTo(loanApprovedPrincipal) > 0) {
+            throw new GeneralPlatformDomainRuleException("error.msg.loan.disbursement.exceeds.approved.principal",
+                    "Sum of Loan disbursements (".concat(String.valueOf(disbursementAmountSum)).concat(") + This one (")
+                            .concat(String.valueOf(principal)).concat(") - Repayments (")
+                            .concat(String.valueOf(loanTransactionRepaymentSum)).concat(") exceeds approved principal (")
+                            .concat(String.valueOf(loanApprovedPrincipal)).concat(")."));
+        }
+    }
+
+    private void processLoanDisbursementDetails(Loan loan, LocalDate actualDisbursementDate, BigDecimal principal) {
+        Optional<LoanDisbursementDetails> loanDisbursementDetailsOpt = loanDisbursementDetailsRepository
+                .findByLoanIdAndExpectedDisbursementDateAndPrincipal(loan.getId(), actualDisbursementDate, principal);
+
+        Long nrOfDisbursalsSoFar = loanDisbursementDetailsRepository.findAllByLoanId(loan.getId()).stream()
+                .filter(p -> p.getActualDisbursementDate() != null).count();
+
+        if (loanDisbursementDetailsOpt.isEmpty()) {
+            if (nrOfDisbursalsSoFar.compareTo(1L) >= 0) {
+                LoanDisbursementDetails details = new LoanDisbursementDetails(actualDisbursementDate, actualDisbursementDate, principal,
+                        null, false);
+                details.updateLoan(loan);
+                loanDisbursementDetailsRepository.saveAndFlush(details);
+            }
+
+            loan = this.loanAssembler.assembleFrom(loan.getId());
+            Long loanRescheduleReasonId = getLoanRescheduleReasonId();
+
+            Integer nrOfInstallmentsToAdd = calculateInstallmentsToAdd(loan);
+
+            createAndApproveRescheduleRequest(loan, actualDisbursementDate, loanRescheduleReasonId, nrOfInstallmentsToAdd);
+        }
+    }
+
+    private Long getLoanRescheduleReasonId() {
+        List<CodeValueData> codeValueList = Lists
+                .newArrayList(codeValueReadPlatformService.retrieveCodeValuesByCode("LoanRescheduleReason"));
+
+        return codeValueList.stream().filter(p -> p.getName().equals("Nuevo desembolso de Crédito Rotativo")).findFirst()
+                .orElseThrow(() -> new GeneralPlatformDomainRuleException("error.msg.loan.reschedule.reason.not.found",
+                        "Loan reschedule reason not found"))
+                .getId();
+    }
+
+    private Integer calculateInstallmentsToAdd(Loan loan) {
+        Integer productNrOfRepayments = loan.getLoanProduct().getNumberOfRepayments();
+        Long notPaidInstallmentNr = loan.getRepaymentScheduleInstallments().stream().filter(p -> !p.isObligationsMet()).count();
+        Integer nrOfInstallmentsToAdd = productNrOfRepayments - notPaidInstallmentNr.intValue();
+
+        if (nrOfInstallmentsToAdd.compareTo(0) == 0) {
+            loan.removeLoanRepaymentScheduleInstallment(loan.getLoanRepaymentScheduleInstallmentsSize());
+            loanRepository.updateRepaymentsAndTermFrequency(-1, -1, loan.getId());
+            loanRepository.save(loan);
+            nrOfInstallmentsToAdd = 1;
+        }
+        return nrOfInstallmentsToAdd;
+    }
+
+    private void createAndApproveRescheduleRequest(Loan loan, LocalDate actualDisbursementDate, Long loanRescheduleReasonId,
+            Integer nrOfInstallmentsToAdd) {
+        try {
+            JsonCommand createRescheduleRequestCommand = createRescheduleRequestAction(fromApiJsonHelper, null, loan.getId(),
+                    actualDisbursementDate, loanRescheduleReasonId, nrOfInstallmentsToAdd);
+            loanRescheduleRequestWritePlatformService.create(createRescheduleRequestCommand);
+        } catch (JsonProcessingException ex) {
+            throw new GeneralPlatformDomainRuleException("error.msg.loan.does.cannot.create.extension",
+                    "Loan could not be automatically create and approve its extension.");
+        }
+    }
+
+    @Transactional
+    public void approveRescheduleRequest(Long loanId, Long rescheduleRequestId, LocalDate actualDisbursementDate) {
+        Loan loan = this.loanAssembler.assembleFrom(loanId);
+
+        if (loan.getLoanProduct().getName().contains(LoanProductType.CREDITO_ROTATIVO.getCode())
+                && loan.getDisbursementDetails().size() > 1) {
+
+            Optional<LoanRescheduleRequest> rescheduleRequestDataOpt = loanRescheduleRequestRepository.findByLoanId(loanId).stream()
+                    .filter(notApp -> notApp.getStatusEnum().compareTo(300) != 0)
+                    .sorted(Comparator.comparing(LoanRescheduleRequest::getId).reversed()).findFirst();
+
+            if (rescheduleRequestDataOpt.isPresent()) {
+                LoanRescheduleRequest curr = rescheduleRequestDataOpt.get();
+
+                try {
+                    JsonCommand createRescheduleRequestCommand = approveRescheduleRequestAction(fromApiJsonHelper,
+                            curr.getRescheduleFromDate(), curr.getId());
+                    loanRescheduleRequestWritePlatformService.approve(createRescheduleRequestCommand);
+
+                    Integer productNrOfRepayments = loan.getLoanProduct().getNumberOfRepayments();
+                    Long notPaidInstallmentNr = loan.getRepaymentScheduleInstallments().stream().filter(p -> !p.isObligationsMet()).count();
+                    Integer nrOfInstallmentsToAdd = productNrOfRepayments - notPaidInstallmentNr.intValue();
+
+                    if (nrOfInstallmentsToAdd.compareTo(0) == 0) {
+                        loanRepository.updateRepaymentsAndTermFrequency(1, 1, loan.getId());
+                    }
+
+                    loan.updateLoanSummaryDerivedFields();
+
+                    loanRepository.save(loan);
+                } catch (JsonProcessingException ex) {
+                    throw new GeneralPlatformDomainRuleException("error.msg.loan.does.cannot.create.extension",
+                            "Loan could not be automatically create and approve its extension.");
+                }
+            }
+        }
+    }
+
     @NotNull
-    private JsonCommand createResqueduleRequestAction(FromJsonHelper fromApiJsonHelper, @Nullable String action, Long loanId,
+    private JsonCommand createRescheduleRequestAction(FromJsonHelper fromApiJsonHelper, @Nullable String action, Long loanId,
             LocalDate startDate, Long rescheduleReasonIdCodeValueId, Integer nrOfNewInstallments) throws JsonProcessingException {
 
         Map<String, Object> map = new HashMap<>();
@@ -5265,8 +5348,8 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
         map.put(RESCHEDULE_REASON_ID_PARAM, String.valueOf(rescheduleReasonIdCodeValueId));
         map.put(SUBMITTED_ON_DATE, DateUtils.format(startDate, DateUtils.DEFAULT_DATE_FORMAT));
         map.put(RESCHEDULE_REASON_COMMENT_PARAM, "");
-        map.put(ADJUSTED_DUE_DATE_PARAM, "");
-        map.put(GRACE_ON_PRINCIPAL_PARAM, "");
+        map.put("adjustedDueDate", "");
+        map.put("graceOnPrincipal", "");
         map.put("rediferirTerms", "");
         map.put("graceOnInterest", "");
         map.put(EXTRA_TERMS, String.valueOf(nrOfNewInstallments));
@@ -5275,11 +5358,8 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
         map.put(LOCALE_PARAM, "es");
         map.put(LOAN_ID_PARAM, String.valueOf(loanId));
 
-        JsonCommand jsonCommand = createJsonCommand(map);
-        jsonCommand.setLoanId(loanId);
-        jsonCommand.setFromApiJsonHelper(fromApiJsonHelper);
+        return createJsonCommand(fromApiJsonHelper, map, loanId);
 
-        return jsonCommand;
     }
 
     @NotNull
@@ -5288,23 +5368,20 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
 
         Map<String, Object> map = new HashMap<>();
 
-        map.put(APPROVED_DATE_PARAM, DateUtils.format(startDate, DateUtils.DEFAULT_DATE_FORMAT));
+        map.put("approvedOnDate", DateUtils.format(startDate, DateUtils.DEFAULT_DATE_FORMAT));
         map.put(DATE_FORMAT_PARAM, DateUtils.DEFAULT_DATE_FORMAT);
         map.put(LOCALE_PARAM, "es");
 
-        JsonCommand jsonCommand = createJsonCommand(map);
-        jsonCommand.setResourceId(rescheduleRequestId);
-        jsonCommand.setFromApiJsonHelper(fromApiJsonHelper);
+        return createJsonCommand(fromApiJsonHelper, map, rescheduleRequestId);
 
-        return jsonCommand;
     }
 
     @NotNull
-    private JsonCommand createJsonCommand(Map<String, Object> jsonMap) throws JsonProcessingException {
+    private JsonCommand createJsonCommand(FromJsonHelper fromApiJsonHelper, Map<String, Object> jsonMap, Long loanId)
+            throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonMap);
-        JsonCommand ret = new JsonCommand(null, JsonParser.parseString(json));
-        ret.setJsonCommandString(json);
-        return ret;
+
+        return new JsonCommand(fromApiJsonHelper, json, loanId, JsonParser.parseString(json));
     }
 }

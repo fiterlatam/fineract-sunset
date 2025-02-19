@@ -82,6 +82,7 @@ import org.apache.fineract.portfolio.calendar.domain.CalendarWeekDaysType;
 import org.apache.fineract.portfolio.calendar.service.CalendarUtils;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeCustomType;
 import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.charge.exception.LoanChargeCannotBeAddedException;
 import org.apache.fineract.portfolio.client.domain.Client;
@@ -1197,6 +1198,10 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
                 // Skip further processing if the value is 0
                 return BigDecimal.ZERO;
             }
+            if (ChargeCalculationType.DISB_SEGO == loanCharge.getChargeCalculation()) {
+                numberOfInstallments = BigDecimal.ONE;
+            }
+
             BigDecimal computedAmount = LoanCharge.percentageOf(percentOf.getAmount(), percentage);
             BigDecimal finalAmount = computedAmount.divide(numberOfInstallments, 0, RoundingMode.HALF_UP);
             amount = amount.plus(finalAmount);
@@ -1301,6 +1306,12 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
             BigDecimal numberOfInstallments = BigDecimal.valueOf(numberOfRepayments);
             BigDecimal computedAmount = LoanCharge.percentageOf(percentOf.getAmount(), percentage);
             this.outstandingBalance = this.outstandingBalance.minus(installment.getPrincipal(this.getCurrency()));
+
+            // If charge is Capital Pendiente, do not divide by nr of installments
+            if (loanCharge.getCharge().getName().contains(ChargeCustomType.CAPITAL_PENDIENTE_MI_PYME.getRootName())) {
+                numberOfInstallments = BigDecimal.ONE;
+            }
+
             BigDecimal finalAmount = computedAmount.divide(numberOfInstallments, 0, RoundingMode.HALF_UP);
             amount = amount.plus(finalAmount);
         }
@@ -1727,7 +1738,15 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
             final Money recoveredAmount = calculateTotalRecoveredPayments();
             this.totalRecovered = recoveredAmount.getAmountDefaultedToNullIfZero();
 
-            final Money principal = this.loanRepaymentScheduleDetail.getPrincipal();
+            Money principal = this.loanRepaymentScheduleDetail.getPrincipal();
+
+            if (this.getLoanProduct().isMultiDisburseLoan()) {
+                principal = Money.of(loanCurrency(),
+                        getDisbursmentData().stream().filter(act -> Objects.nonNull(act.getActualDisbursementDate()))
+                                .map(obj -> obj.getPrincipal()).reduce(BigDecimal.ZERO, BigDecimal::add));
+
+            }
+
             this.summary.updateSummary(loanCurrency(), principal, getRepaymentScheduleInstallments(), this.loanSummaryWrapper,
                     this.charges);
             updateLoanOutstandingBalances();
@@ -5716,6 +5735,9 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
                         && loanCharge.getApplicableFromInstallment() > installment.getInstallmentNumber())) {
                     amount = BigDecimal.ZERO;
                 }
+                if (ChargeCalculationType.DISB_SEGO == loanCharge.getChargeCalculation()) {
+                    amount = loanCharge.amount();
+                }
                 final LoanInstallmentCharge loanInstallmentCharge = new LoanInstallmentCharge(amount, loanCharge, installment);
                 installment.getInstallmentCharges().add(loanInstallmentCharge);
                 loanChargePerInstallments.add(loanInstallmentCharge);
@@ -8239,5 +8261,4 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
     public boolean hasPenaltiesInRepaymentSchedules() {
         return this.getRepaymentScheduleInstallments().stream().anyMatch(LoanRepaymentScheduleInstallment::hasPenalties);
     }
-
 }
