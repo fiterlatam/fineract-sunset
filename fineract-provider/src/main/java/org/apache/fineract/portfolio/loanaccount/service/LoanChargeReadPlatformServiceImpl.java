@@ -59,6 +59,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
     private final ChargeDropdownReadPlatformService chargeDropdownReadPlatformService;
     private final DropdownReadPlatformService dropdownReadPlatformService;
     private final LoanChargeRepository loanChargeRepository;
+    private static final String SELECT_QUERY_COMMAND = "select ";
 
     private static final class LoanChargeMapper implements RowMapper<LoanChargeData> {
 
@@ -180,7 +181,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
     public LoanChargeData retrieveLoanChargeDetails(final Long id, final Long loanId) {
         try {
             final LoanChargeMapper rm = new LoanChargeMapper();
-            final String sql = "select " + rm.schema() + " where lc.id=? and lc.loan_id=?";
+            final String sql = SELECT_QUERY_COMMAND + rm.schema() + " where lc.id=? and lc.loan_id=?";
             return this.jdbcTemplate.queryForObject(sql, rm, id, loanId); // NOSONAR
         } catch (final EmptyResultDataAccessException e) {
             throw new LoanChargeNotFoundException(id, loanId, e);
@@ -190,7 +191,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
     @Override
     public Collection<LoanChargeData> retrieveLoanCharges(final Long loanId) {
         final LoanChargeMapper rm = new LoanChargeMapper();
-        final String sql = "select " + rm.schema() + " where lc.loan_id=? AND lc.is_active = true"
+        final String sql = SELECT_QUERY_COMMAND + rm.schema() + " where lc.loan_id=? AND lc.is_active = true"
                 + " order by coalesce(lc.due_for_collection_as_of_date,date(coalesce(dd.disbursedon_date,dd.expected_disburse_date))),lc.charge_time_enum ASC, lc.due_for_collection_as_of_date ASC, lc.is_penalty ASC";
 
         return this.jdbcTemplate.query(sql, rm, loanId); // NOSONAR
@@ -199,7 +200,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
     @Override
     public Collection<LoanChargeData> retrieveLoanChargesForFeePayment(final Integer paymentMode, final Integer loanStatus) {
         final LoanChargeMapperWithLoanId rm = new LoanChargeMapperWithLoanId();
-        final String sql = "select " + rm.schema()
+        final String sql = SELECT_QUERY_COMMAND + rm.schema()
                 + "where loan.loan_status_id= ? and lc.charge_payment_mode_enum=? and lc.waived = false and lc.is_paid_derived=false and lc.is_active = true";
         return this.jdbcTemplate.query(sql, rm, loanStatus, paymentMode); // NOSONAR
     }
@@ -235,7 +236,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
     @Override
     public Collection<LoanInstallmentChargeData> retrieveInstallmentLoanCharges(Long loanChargeId, boolean onlyPaymentPendingCharges) {
         final LoanInstallmentChargeMapper rm = new LoanInstallmentChargeMapper();
-        String sql = "select " + rm.schema() + "where lic.loan_charge_id= ? ";
+        String sql = SELECT_QUERY_COMMAND + rm.schema() + "where lic.loan_charge_id= ? ";
         if (onlyPaymentPendingCharges) {
             sql = sql + "and lic.waived = false and lic.is_paid_derived=false";
         }
@@ -243,12 +244,20 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
         return this.jdbcTemplate.query(sql, rm, loanChargeId); // NOSONAR
     }
 
+    public Collection<LoanInstallmentChargeData> retrieveInstallmentLoanCharges(Long installmentId) {
+        final LoanInstallmentChargeMapper rm = new LoanInstallmentChargeMapper();
+        String sql = SELECT_QUERY_COMMAND + rm.schema() + "where lic.loan_schedule_id= ? ";
+        sql = sql + " order by lsi.installment";
+        return this.jdbcTemplate.query(sql, rm, installmentId); // NOSONAR
+    }
+
     private static final class LoanInstallmentChargeMapper implements RowMapper<LoanInstallmentChargeData> {
 
         public String schema() {
-            return " lsi.installment as installmentNumber, lsi.duedate as dueAsOfDate, "
-                    + "lic.amount_outstanding_derived as amountOutstanding, lic.amount as  amount, lic.is_paid_derived as paid, "
-                    + "lic.amount_waived_derived as amountWaived, lic.waived as waived from  m_loan_installment_charge lic "
+            return " mchg.name, lsi.installment as installmentNumber, lsi.duedate as dueAsOfDate, "
+                    + "lic.amount_outstanding_derived as amountOutstanding, lic.amount_paid_derived as amountPaid, lic.amount as  amount, lic.is_paid_derived as paid, "
+                    + "lic.amount_waived_derived as amountWaived, lic.waived as waived "
+                    + "from  m_loan_installment_charge lic join m_loan_charge mlch on mlch.id = lic.loan_charge_id join m_charge mchg on mchg.id = mlch.charge_id "
                     + "join m_loan_repayment_schedule lsi on lsi.id = lic.loan_schedule_id ";
         }
 
@@ -258,12 +267,15 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
             final LocalDate dueAsOfDate = JdbcSupport.getLocalDate(rs, "dueAsOfDate");
             final BigDecimal amountOutstanding = rs.getBigDecimal("amountOutstanding");
             final BigDecimal amount = rs.getBigDecimal("amount");
+            final BigDecimal amountPaid = rs.getBigDecimal("amountPaid");
             final BigDecimal amountWaived = rs.getBigDecimal("amountWaived");
+            final String chargeName = rs.getString("name");
             final boolean paid = rs.getBoolean("paid");
             final boolean waived = rs.getBoolean("waived");
 
             return LoanInstallmentChargeData.builder().installmentNumber(installmentNumber).dueDate(dueAsOfDate).amount(amount)
-                    .amountOutstanding(amountOutstanding).amountWaived(amountWaived).paid(paid).waived(waived).build();
+                    .chargeName(chargeName).amountOutstanding(amountOutstanding).amountWaived(amountWaived).paid(paid).waived(waived)
+                    .amountPaid(amountPaid).build();
         }
     }
 
@@ -286,7 +298,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
 
         final LoanChargeAccrualMapper rm = new LoanChargeAccrualMapper();
 
-        final String sql = "select " + rm.schema() + " where lc.loan_id=? AND lc.is_active = true group by  lc.id, c.name "
+        final String sql = SELECT_QUERY_COMMAND + rm.schema() + " where lc.loan_id=? AND lc.is_active = true group by  lc.id, c.name "
                 + " order by lc.charge_time_enum ASC, lc.due_for_collection_as_of_date ASC, lc.is_penalty ASC";
 
         Collection<LoanChargeData> charges = this.jdbcTemplate.query(sql, rm, // NOSONAR
@@ -380,7 +392,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
 
         final LoanChargeUnRecognizedIncomeMapper rm = new LoanChargeUnRecognizedIncomeMapper(loanChargeDatas);
 
-        final String sql = "select " + rm.schema() + " where lc.loan_id=? AND lc.is_active = true group by  lc.id "
+        final String sql = SELECT_QUERY_COMMAND + rm.schema() + " where lc.loan_id=? AND lc.is_active = true group by  lc.id "
                 + " order by lc.charge_time_enum ASC, lc.due_for_collection_as_of_date ASC, lc.is_penalty ASC";
 
         return this.jdbcTemplate.query(sql, rm, LoanTransactionType.WAIVE_CHARGES.getValue(), loanId, loanId); // NOSONAR
@@ -428,7 +440,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
 
     private Collection<LoanInstallmentChargeData> retrieveInstallmentLoanChargesForAccrual(Long loanChargeId) {
         final LoanInstallmentChargeAccrualMapper rm = new LoanInstallmentChargeAccrualMapper();
-        String sql = "select " + rm.schema()
+        String sql = SELECT_QUERY_COMMAND + rm.schema()
                 + " where lic.loan_charge_id= ?  group by lsi.installment, lsi.duedate, lic.amount_outstanding_derived, lic.amount, lic.is_paid_derived, lic.amount_waived_derived, lic.waived";
         Collection<LoanInstallmentChargeData> chargeDatas = this.jdbcTemplate.query(sql, rm, // NOSONAR
                 LoanTransactionType.ACCRUAL.getValue(), loanChargeId);
@@ -492,7 +504,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
     private Collection<LoanInstallmentChargeData> updateInstallmentLoanChargesWithUnrecognizedIncome(final Long loanChargeId,
             final Map<Integer, LoanInstallmentChargeData> installmentChargeDatas) {
         final LoanInstallmentChargeUnRecognizedIncomeMapper rm = new LoanInstallmentChargeUnRecognizedIncomeMapper(installmentChargeDatas);
-        String sql = "select " + rm.schema() + " where cpb.loan_charge_id = ? group by cpb.installment_number  ";
+        String sql = SELECT_QUERY_COMMAND + rm.schema() + " where cpb.loan_charge_id = ? group by cpb.installment_number  ";
         return this.jdbcTemplate.query(sql, rm, LoanTransactionType.WAIVE_CHARGES.getValue(), loanChargeId); // NOSONAR
     }
 
@@ -535,7 +547,7 @@ public class LoanChargeReadPlatformServiceImpl implements LoanChargeReadPlatform
 
         LoanChargesPaidByMapper rm = new LoanChargesPaidByMapper();
         StringBuilder sb = new StringBuilder(100);
-        sb.append("select ");
+        sb.append(SELECT_QUERY_COMMAND);
         sb.append(rm.schema());
         sb.append(" where lcp.loan_charge_id = ?");
         List<Object> args = new ArrayList<>(3);

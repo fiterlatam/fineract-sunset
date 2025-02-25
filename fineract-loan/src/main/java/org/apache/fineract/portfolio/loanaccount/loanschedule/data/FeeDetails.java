@@ -16,26 +16,25 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.fineract.portfolio.loanaccount.data;
+package org.apache.fineract.portfolio.loanaccount.loanschedule.data;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 @Getter
-@Builder
-public class LoanInstallmentChargeData {
+@Setter
+public class FeeDetails {
 
     private final String chargeName;
-    private final Integer installmentNumber;
-    private final LocalDate dueDate;
-    private final BigDecimal amount;
-    private final BigDecimal amountOutstanding;
-    private final BigDecimal amountWaived;
-    private final boolean paid;
-    private final boolean waived;
-    private BigDecimal amountAccrued;
-    private BigDecimal amountUnrecognized;
-    private BigDecimal amountPaid;
+    private final BigDecimal expected;
+    private final BigDecimal paid;
+    private final BigDecimal due;
+
+    public FeeDetails(String chargeName, BigDecimal expected, BigDecimal paid, BigDecimal due) {
+        this.chargeName = chargeName;
+        this.expected = expected;
+        this.paid = paid;
+        this.due = due;
+    }
 }
