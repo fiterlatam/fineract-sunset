@@ -47,6 +47,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.Predicate;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.custom.portfolio.externalcharge.honoratio.domain.CustomChargeHonorarioMap;
@@ -550,6 +551,10 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
 
     @Column(name = "migrar_cli_nroid")
     private String cedula;
+
+    @Getter
+    @Column(name = "original_number_of_repayments")
+    private Integer originalNumberOfRepayments;
 
     @SuppressWarnings({ "squid:S107" })
     public static Loan newIndividualLoanApplication(final String accountNo, final Client client, final Integer loanType,
@@ -1203,7 +1208,7 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
             }
 
             BigDecimal computedAmount = LoanCharge.percentageOf(percentOf.getAmount(), percentage);
-            BigDecimal finalAmount = computedAmount.divide(numberOfInstallments, 0, RoundingMode.HALF_UP);
+            BigDecimal finalAmount = computedAmount.divide(numberOfInstallments, 2, RoundingMode.HALF_UP);
             amount = amount.plus(finalAmount);
             return amount.getAmount();
         }
@@ -1255,7 +1260,7 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
         BigDecimal computedAmount = LoanCharge.percentageOf(percentOf.getAmount(), percentage);
         BigDecimal finalAmount = computedAmount;
         if (numberOfInstallments.compareTo(BigDecimal.ZERO) > 0) {
-            finalAmount = computedAmount.divide(numberOfInstallments, 0, RoundingMode.HALF_UP);
+            finalAmount = computedAmount.divide(numberOfInstallments, 2, RoundingMode.HALF_UP);
         }
         return amount.plus(finalAmount);
     }
@@ -1294,7 +1299,7 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
             if (loanCharge != null && loanCharge.isVatChargeOfHonoCharge()) {
                 amount = amount.plus(Money.of(getCurrency(), loanCharge.getVatAmountOfHonoCharge(installment.getInstallmentNumber())));
             } else {
-                amount = amount.plus(percentOf.getAmount().multiply(percentage).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP));
+                amount = amount.plus(percentOf.getAmount().multiply(percentage).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
             }
         } else if (calculationType.isCustomPercentageOfOutstandingPrincipalCharge()) {
             Integer numberOfRepayments = this.getLoanProductRelatedDetail().getNumberOfRepayments();
@@ -1312,7 +1317,7 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
                 numberOfInstallments = BigDecimal.ONE;
             }
 
-            BigDecimal finalAmount = computedAmount.divide(numberOfInstallments, 0, RoundingMode.HALF_UP);
+            BigDecimal finalAmount = computedAmount.divide(numberOfInstallments, 2, RoundingMode.HALF_UP);
             amount = amount.plus(finalAmount);
         }
         return amount;
@@ -3208,6 +3213,12 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
                     loanApplicationTerms.getInterestMethod());
         }
 
+        if (this.getRepaymentScheduleInstallments().size() > 0) {
+            loanApplicationTerms.setExistentInstallments(this.getRepaymentScheduleInstallments());
+        }
+
+        loanApplicationTerms.setLoanProductName(this.getLoanProduct().getName());
+
         return loanScheduleGenerator.generate(mc, loanApplicationTerms, getActiveCharges(), scheduleGeneratorDTO.getHolidayDetailDTO());
     }
 
@@ -3706,7 +3717,8 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
                 }
             }
 
-            if (isProgressiveLoan()) {
+            if (isProgressiveLoan()
+                    && Boolean.FALSE.equals(this.getLoanProduct().getName().contains(LoanProductType.CREDITO_ROTATIVO.getCode()))) {
                 reprocess = true;
             }
         }
@@ -8260,5 +8272,9 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
 
     public boolean hasPenaltiesInRepaymentSchedules() {
         return this.getRepaymentScheduleInstallments().stream().anyMatch(LoanRepaymentScheduleInstallment::hasPenalties);
+    }
+
+    public void setOriginalNrOfRepayments() {
+        this.originalNumberOfRepayments = this.getNumberOfRepayments();
     }
 }

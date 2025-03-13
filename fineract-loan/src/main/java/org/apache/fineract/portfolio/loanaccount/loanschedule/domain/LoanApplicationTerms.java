@@ -28,6 +28,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
@@ -48,6 +49,7 @@ import org.apache.fineract.portfolio.loanaccount.data.DisbursementData;
 import org.apache.fineract.portfolio.loanaccount.data.HolidayDetailDTO;
 import org.apache.fineract.portfolio.loanaccount.data.LoanTermVariationsData;
 import org.apache.fineract.portfolio.loanaccount.data.LoanTermVariationsDataWrapper;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
 import org.apache.fineract.portfolio.loanproduct.domain.AmortizationMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestCalculationPeriodMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestMethod;
@@ -233,6 +235,14 @@ public final class LoanApplicationTerms {
     private boolean recalculateEMIForInstallment;
     private BigDecimal advancePrincipalAmountForInstallment;
     private Integer numberOfInstallmentsToIgnore;
+
+    @Getter
+    @Setter
+    private String loanProductName;
+
+    @Getter
+    @Setter
+    private List<LoanRepaymentScheduleInstallment> existentInstallments;
 
     public static LoanApplicationTerms assembleFrom(final ApplicationCurrency currency, final Integer loanTermFrequency,
             final PeriodFrequencyType loanTermPeriodFrequencyType, final Integer numberOfRepayments, final Integer repaymentEvery,
@@ -1314,7 +1324,7 @@ public final class LoanApplicationTerms {
                 periodStartDate, periodEndDate, useDailyInterestCalculation);
         BigDecimal dueInterest = outstandingBalance.getAmount().multiply(periodicInterestRate);
         if (!ignoreCurrencyDigitsAfterDecimal) {
-            dueInterest = dueInterest.setScale(0, RoundingMode.HALF_UP);
+            dueInterest = dueInterest.setScale(2, RoundingMode.HALF_UP);
         }
         interestDue = interestDue.add(dueInterest);
         return interestDue;
