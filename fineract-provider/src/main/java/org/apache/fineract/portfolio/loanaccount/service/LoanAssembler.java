@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -364,6 +365,22 @@ public class LoanAssembler {
 
         BigDecimal valorDescuento = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("valorDescuento", element);
         loanApplication.updateValorDescuento(valorDescuento);
+
+        // Update Life Insurance Loan charge
+        BigDecimal lifeInsuranceSUM = loanScheduleModel.getPeriods().stream().filter(tli -> tli.getTotalLifeInsuranceCharged() != null)
+                .map(tli -> tli.getTotalLifeInsuranceCharged()).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (Objects.nonNull(loanApplication.getLoanCharges())) {
+            loanApplication.getLoanCharges().forEach(loanCharge -> {
+                if (loanCharge.getCharge().isPercentageBasedLifeInsurance()) {
+                    loanCharge.updateAmount(lifeInsuranceSUM);
+                }
+            });
+        }
+
+        loanApplication.getRepaymentScheduleInstallments().stream()
+                .forEach(repaymentScheduleInstallment -> repaymentScheduleInstallment.setLifeInsuranceChargePortion(loanScheduleModel
+                        .getPeriods().get(repaymentScheduleInstallment.getInstallmentNumber()).getTotalLifeInsuranceCharged()));
 
         /// Migrated loan details
         Boolean isMigratedLoan = this.fromApiJsonHelper.extractBooleanNamed(LoanApiConstants.IS_MIGRAR_LOAN, element);
