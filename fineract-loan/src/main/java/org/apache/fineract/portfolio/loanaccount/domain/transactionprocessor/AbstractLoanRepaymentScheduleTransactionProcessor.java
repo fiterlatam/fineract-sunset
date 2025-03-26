@@ -698,7 +698,6 @@ public abstract class AbstractLoanRepaymentScheduleTransactionProcessor implemen
         }
         return penaltyCharges;
     }
-
     @SuppressWarnings({ "java:S3776", "java:S135" })
     protected void updateChargesPaidAmountBy(final LoanTransaction loanTransaction, final Money chargeAmount, final Set<LoanCharge> charges,
             final Integer installmentNumber) {
@@ -721,7 +720,11 @@ public abstract class AbstractLoanRepaymentScheduleTransactionProcessor implemen
             // This fix is made to stop that duplicate entry of loanChargepaidByObject
             if (!loanTransaction.getLoanChargesPaid().isEmpty()) {
                 LoanInstallmentCharge loanInstallmentCharge = unpaidCharge.getInstallmentLoanCharge(installmentNumber);
-                if (loanInstallmentCharge.getLoanCharge().isLifeInsurance() && loanInstallmentCharge.isPaid()) {
+                if (Objects.nonNull(loanInstallmentCharge) //
+                        && (Objects.nonNull(loanInstallmentCharge.getLoanCharge())) //
+                        && loanInstallmentCharge.getLoanCharge().isLifeInsurance() //
+                        && loanInstallmentCharge.isPaid() //
+                        && unpaidCharge.isLifeInsurance()) {
                     amountPaidTowardsCharge = loanInstallmentCharge.getAmountPaid(chargeAmount.getCurrency());
                     amountRemaining = amountRemaining.minus(amountPaidTowardsCharge);
                     continue;

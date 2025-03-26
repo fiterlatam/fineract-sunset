@@ -2587,7 +2587,7 @@ public abstract class AbstractCumulativeLoanScheduleGenerator implements LoanSch
         return cumulative;
     }
 
-    @SuppressWarnings({"java:S3776"})
+    @SuppressWarnings({ "squid:S3776", "squid:S00107", "java:S3776" })
     private BigDecimal processLifeInsuranceCharge(PrincipalInterest principalInterestForThisPeriod, BigDecimal amount,
             Integer installmentNumber) {
         BigDecimal principalApprovedAmount = (BigDecimal) principalInterestForThisPeriod.getAuxiliaryData("principalApprovedAmount");
