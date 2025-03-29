@@ -294,7 +294,8 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
             }
 
             // If product is Ctredito Rotativo, fill automatically expected disbursement date tranche details
-            if (loanProduct.getName().contains(LoanProductType.CREDITO_ROTATIVO.getCode())
+            Boolean isMigratedLoan = this.fromJsonHelper.extractBooleanNamed(LoanApiConstants.IS_MIGRAR_LOAN, command.parsedJson());
+            if ((isMigratedLoan == null || !isMigratedLoan) && loanProduct.getName().contains(LoanProductType.CREDITO_ROTATIVO.getCode())
                     || loanProduct.getName().contains(LoanProductType.NANO_CREDITO.getCode())) {
                 final String expectedDisbursementDate = this.fromJsonHelper
                         .extractStringNamed(LoanApiConstants.expectedDisbursementDateParameterName, command.parsedJson());
@@ -676,12 +677,12 @@ public class LoanApplicationWritePlatformServiceJpaRepositoryImpl implements Loa
                 throw new GeneralPlatformDomainRuleException("error.msg.loan.creditorotativo.first.repayment.date.mandatory",
                         "First Repayment date shall be provided when product is Credito Rotativo");
             } else {
-
-                if (expectedfirstRepaymentDate.getDayOfMonth() != 1 && expectedfirstRepaymentDate.getDayOfMonth() != 10
-                        && expectedfirstRepaymentDate.getDayOfMonth() != 20) {
+                if ((!newLoanApplication.isMigratedLoan()) && expectedfirstRepaymentDate.getDayOfMonth() != 1
+                        && expectedfirstRepaymentDate.getDayOfMonth() != 10 && expectedfirstRepaymentDate.getDayOfMonth() != 20) {
                     throw new GeneralPlatformDomainRuleException("error.msg.loan.creditorotativo.first.repayment.date.must.be.day.1.10.20",
                             "Disbursement date must be 1, 10 or 20");
                 }
+
             }
         }
     }

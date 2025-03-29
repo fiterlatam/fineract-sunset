@@ -5213,8 +5213,8 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
             if (Objects.isNull(expectedFirstRepaymentDate)) {
                 throw new GeneralPlatformDomainRuleException("error.msg.loan.creditorotativo.first.repayment.date.mandatory",
                         "First Repayment date shall be provided when product is Credito Rotativo");
-            } else if (expectedFirstRepaymentDate.getDayOfMonth() != 1 && expectedFirstRepaymentDate.getDayOfMonth() != 10
-                    && expectedFirstRepaymentDate.getDayOfMonth() != 20) {
+            } else if (!loan.isMigratedLoan() && expectedFirstRepaymentDate.getDayOfMonth() != 1
+                    && expectedFirstRepaymentDate.getDayOfMonth() != 10 && expectedFirstRepaymentDate.getDayOfMonth() != 20) {
                 throw new GeneralPlatformDomainRuleException("error.msg.loan..creditorotativo.first.repayment.date.must.be.day.1.10.20",
                         "Disbursement date must be 1, 10 or 20");
             }
@@ -5246,13 +5246,12 @@ public class LoanWritePlatformServiceJpaRepositoryImpl implements LoanWritePlatf
     }
 
     private void processLoanDisbursementDetails(Loan loan, LocalDate actualDisbursementDate, BigDecimal principal) {
-        Optional<LoanDisbursementDetails> loanDisbursementDetailsOpt = loanDisbursementDetailsRepository
-                .findByLoanIdAndExpectedDisbursementDateAndPrincipal(loan.getId(), actualDisbursementDate, principal);
-
         Long nrOfDisbursalsSoFar = loanDisbursementDetailsRepository.findAllByLoanId(loan.getId()).stream()
-                .filter(p -> p.getActualDisbursementDate() != null).count();
+                .filter(wasDisbursed -> wasDisbursed.getActualDisbursementDate() != null)
+                .filter(notReversed -> Boolean.FALSE.equals(notReversed.isReversed())).count();
 
-        if (loanDisbursementDetailsOpt.isEmpty() && nrOfDisbursalsSoFar.compareTo(1L) >= 0) {
+        // If first disbursement was made, create a new disbursement detail for the next ones
+        if (nrOfDisbursalsSoFar.compareTo(1L) >= 0) {
             LoanDisbursementDetails details = new LoanDisbursementDetails(actualDisbursementDate, actualDisbursementDate, principal, null,
                     false);
             details.updateLoan(loan);
