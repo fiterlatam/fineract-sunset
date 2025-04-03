@@ -2,8 +2,6 @@ trigger:
   batch: true
   tags:
     include:
-      - f*
-    exclude:
       - v*
 
 pr: none

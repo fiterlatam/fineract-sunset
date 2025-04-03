@@ -49,6 +49,7 @@ import org.apache.fineract.portfolio.loanaccount.data.LoanInstallmentChargeData;
 
 @Entity
 @Table(name = "m_loan_charge", uniqueConstraints = { @UniqueConstraint(columnNames = { "external_id" }, name = "external_id") })
+@SuppressWarnings({ "java:S1068", "java:S1192", "java:S1075", "java:S1170", "java:S1135", "javaarchitecture:S7027" })
 public class LoanCharge extends AbstractAuditableWithUTCDateTimeCustom {
 
     private static final String DUE_DATE_PARAM = "dueDate";
@@ -888,7 +889,7 @@ public class LoanCharge extends AbstractAuditableWithUTCDateTimeCustom {
     }
 
     public boolean isDueForCollectionForInstallment(final LoanRepaymentScheduleInstallment installment) {
-        return this.getOverdueInstallmentCharge() != null && Objects
+        return this.getOverdueInstallmentCharge() != null && this.getOverdueInstallmentCharge().installment() != null && Objects
                 .equals(this.getOverdueInstallmentCharge().installment().getInstallmentNumber(), installment.getInstallmentNumber());
     }
 

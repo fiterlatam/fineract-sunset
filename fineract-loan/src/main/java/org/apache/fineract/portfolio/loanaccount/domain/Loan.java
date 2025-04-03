@@ -1591,6 +1591,7 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
     // installments are removed because
     // of advance payment then those are removed from the original installment list and vice versa added to the new
     // installment list in case of reschedule
+   @SuppressWarnings({"java:S3776" })
     public void updateLoanSchedule(final LoanScheduleDTO loanSchedule) {
         List<LoanRepaymentScheduleInstallment> scheduleInstallments = loanSchedule.getInstallments();
         List<LoanRepaymentScheduleInstallment> removeInstallments = new ArrayList<>();
@@ -1605,6 +1606,17 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
                 installment.updateComponents(scheduledInstallment, this.getCurrency());
             } else {
                 // This can only be possible in case of big advance payment which reduces the installment count
+                installment.getInstallmentCharges().clear();
+                // Remove penalty charges for deleted installments
+                Set<LoanCharge> removeOverdueInstallmentCharges = new HashSet<>();
+                for (LoanCharge charge : this.charges) {
+                    if (charge.isPenaltyCharge()
+                            && Objects.equals(charge.getOverdueInstallmentCharge().getInstallment().getInstallmentNumber(),
+                                    installment.getInstallmentNumber())) {
+                        removeOverdueInstallmentCharges.add(charge);
+                    }
+                }
+                removeOverdueInstallmentCharges.forEach(this.charges::remove);
                 removeInstallments.add(installment);
             }
         }
@@ -1753,10 +1765,15 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
             Money principal = this.loanRepaymentScheduleDetail.getPrincipal();
 
             if (this.getLoanProduct().isMultiDisburseLoan()) {
-                principal = Money.of(loanCurrency(),
-                        getDisbursmentData().stream().filter(act -> Objects.nonNull(act.getActualDisbursementDate()))
-                                .map(obj -> obj.getPrincipal()).reduce(BigDecimal.ZERO, BigDecimal::add));
 
+                BigDecimal totalDisbursedAmount = disbursementDetails.stream()
+                        .filter(notReversed -> Boolean.FALSE.equals(notReversed.isReversed()))
+                        .filter(act -> Objects.nonNull(act.getActualDisbursementDate())).map(obj -> obj.getPrincipal())
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                principal = Money.of(getCurrency(), totalDisbursedAmount);
+
+                this.loanRepaymentScheduleDetail.setPrincipal(totalDisbursedAmount);
             }
 
             this.summary.updateSummary(loanCurrency(), principal, getRepaymentScheduleInstallments(), this.loanSummaryWrapper,
