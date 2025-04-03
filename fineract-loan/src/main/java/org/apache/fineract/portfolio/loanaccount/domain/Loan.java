@@ -4178,10 +4178,10 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
                 transactionForAdjustment.getTransactionDate());
 
         if (transactionForAdjustment.isNotRepaymentLikeType() && transactionForAdjustment.isNotWaiver()
-                && transactionForAdjustment.isNotCreditBalanceRefund()) {
-            final String errorMessage = "Only (non-reversed) transactions of type repayment, waiver or credit balance refund can be adjusted.";
+                && transactionForAdjustment.isNotCreditBalanceRefund() && !transactionForAdjustment.isDisbursement()) {
+            final String errorMessage = "Only (non-reversed) transactions of type repayment, waiver, credit balance refund, or disbursement can be adjusted.";
             throw new InvalidLoanTransactionTypeException(Loan.TRANSACTION_PARAM,
-                    "adjustment.is.only.allowed.to.repayment.or.waiver.or.creditbalancerefund.transactions", errorMessage);
+                    "adjustment.is.only.allowed.to.repayment.or.waiver.or.creditbalancerefund.or.disbursement.transactions", errorMessage);
         }
 
         transactionForAdjustment.reverse(reversalExternalId);
@@ -4198,11 +4198,63 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
         }
 
         if (newTransactionDetail.isRepaymentLikeType() || newTransactionDetail.isInterestWaiver()) {
+
+            // Reverse the entry from disbursement_detail before regenerating the schedule to affect totals
+            reverseDisbursementDetaisAndRescheduleRequest(transactionForAdjustment);
+
             changedTransactionDetail = handleRepaymentOrRecoveryOrWaiverTransaction(newTransactionDetail, loanLifecycleStateMachine,
                     transactionForAdjustment, scheduleGeneratorDTO);
+        } else if (newTransactionDetail.isDisbursement()) {
+            // Handle disbursement adjustment
+            validateAccountStatus(LoanEvent.LOAN_DISBURSED);
+            existingTransactionIds.addAll(findExistingTransactionIds());
+            existingReversedTransactionIds.addAll(findExistingReversedTransactionIds());
+
+            newTransactionDetail.updateLoan(this);
+            if (newTransactionDetail.isNotZero(loanCurrency())) {
+                addLoanTransaction(newTransactionDetail);
+            }
+
+            if (this.repaymentScheduleDetail().isInterestRecalculationEnabled() || isProgressiveLoan()) {
+                regenerateRepaymentScheduleWithInterestRecalculation(scheduleGeneratorDTO);
+            }
+
+            updateLoanSummaryDerivedFields();
+            doPostLoanTransactionChecks(newTransactionDetail.getTransactionDate(), loanLifecycleStateMachine);
+
+            changedTransactionDetail = new ChangedTransactionDetail();
+            changedTransactionDetail.getNewTransactionMappings().put(newTransactionDetail.getId(), newTransactionDetail);
         }
 
         return changedTransactionDetail;
+    }
+
+    private void reverseDisbursementDetaisAndRescheduleRequest(LoanTransaction transactionForAdjustment) {
+
+        if (this.isMultiDisburmentLoan() && LoanTransactionType.DISBURSEMENT.equals(transactionForAdjustment.getTypeOf())
+                && transactionForAdjustment.isReversed()) {
+
+            // Revert entry from disbursement details and leave repayment schedule without this disbursal
+            disbursementDetails.stream().filter(disbursementDetail -> Boolean.FALSE.equals(disbursementDetail.isReversed()))
+                    .filter(samePrincipal -> samePrincipal.getPrincipal().compareTo(transactionForAdjustment.getAmount()) == 0)
+                    .sorted(Comparator.comparing(LoanDisbursementDetails::getId).reversed()) //
+                    .findFirst() //
+                    .ifPresent(LoanDisbursementDetails::reverse);
+
+            // Check edge case when new installmentes were added by this disbursal, then we need to revert the
+            // reschedule request as well
+            loanTermVariations.stream()
+                    .filter(loanTermVariation -> LoanTermVariationType.EXTEND_REPAYMENT_PERIOD.equals(loanTermVariation.getTermType()))
+                    .filter(createdByMifos -> createdByMifos.getCreatedBy().isPresent()
+                            && createdByMifos.getCreatedBy().get().compareTo(1L) == 0)
+                    .filter(active -> active.isActive()) //
+                    .sorted(Comparator.comparing(LoanTermVariations::getId).reversed()) //
+                    .findFirst() //
+                    .ifPresent(loanTermVariation -> {
+                        loanTermVariation.setDecimalValue(BigDecimal.ZERO);
+                        loanTermVariation.updateIsActive(false);
+                    });
+        }
     }
 
     public ChangedTransactionDetail undoWrittenOff(LoanLifecycleStateMachine loanLifecycleStateMachine,
@@ -6763,7 +6815,7 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
         }
 
         final Integer numberOfRepayments = this.loanRepaymentScheduleDetail.getNumberOfRepayments();
-        final Integer repaymentEvery = this.loanRepaymentScheduleDetail.getRepayEvery();
+        final Integer repayEvery = this.loanRepaymentScheduleDetail.getRepayEvery();
         final PeriodFrequencyType repaymentPeriodFrequencyType = this.loanRepaymentScheduleDetail.getRepaymentPeriodFrequencyType();
 
         final AmortizationMethod amortizationMethod = this.loanRepaymentScheduleDetail.getAmortizationMethod();
