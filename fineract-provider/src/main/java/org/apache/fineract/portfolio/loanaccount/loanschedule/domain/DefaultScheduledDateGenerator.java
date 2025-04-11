@@ -347,7 +347,6 @@ public class DefaultScheduledDateGenerator implements ScheduledDateGenerator {
             case MONTHS:
                 if (loanCalendar == null) {
                     idealDisbursementDate = firstRepaymentDate.minusMonths(repaidEvery);
-
                     if (Boolean.FALSE.equals(idealDisbursementDate.isEqual(loanApplicationTerms.getExpectedDisbursementDate()))) {
                         idealDisbursementDate = loanApplicationTerms.getExpectedDisbursementDate();
                     }
