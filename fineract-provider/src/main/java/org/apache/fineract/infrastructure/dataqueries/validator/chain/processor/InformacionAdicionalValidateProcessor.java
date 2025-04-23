@@ -43,33 +43,33 @@ public class InformacionAdicionalValidateProcessor extends CustomFieldValidation
         return STRING_DATATABLE_INFORMACION_ADICIONAL;
     }
 
-  @Override
-  public void process(
-      Object parentObject,
-      DataTableMetaData metData,
-      Map<String, String> dataParams,
-      Map<String, Object> auxliaryObjects) {
+    @Override
+    public void process(Object parentObject, DataTableMetaData metData, Map<String, String> dataParams,
+            Map<String, Object> auxliaryObjects) {
 
-        if (metData.getDataTableName().equalsIgnoreCase(whoAmI()) && (parentObject instanceof Loan loanObj)) {
-
-                boolean isManualValidation = Boolean.TRUE.toString()
-                        .equalsIgnoreCase(dataParams.get(STRING_PARAM_VALIDACION_MANUAL));
-
-                boolean isWelcomeNotificationPending = Boolean.FALSE.toString()
-                                                               .equalsIgnoreCase(dataParams.get(STRING_PARAM_NOTIFICACION_BIENVENIDA))
-                                                       || StringUtils.EMPTY.equalsIgnoreCase(dataParams.get(STRING_PARAM_NOTIFICACION_BIENVENIDA));
-
-                if (loanObj.isApproved()
-                    && !loanObj.isDisbursed()
-                    && isManualValidation
-                    && isWelcomeNotificationPending) {
-
-                    log.warn("Informacion Adicional - DataTableMetaData: {}", metData.getDataTableName());
-                }
-            }
-
-
+        if (metData.getDataTableName().equalsIgnoreCase(whoAmI()) && parentObject instanceof Loan loan 
+                && loan.isApproved() 
+                && Boolean.FALSE.equals(loan.isDisbursed())
+                && isValidManualValidation(dataParams)
+                && isWelcomeNotificationPendingOrEmpty(dataParams)) {
+            
+            log.warn("Informacion Adicional - DataTableMetaData: {}", metData.getDataTableName());
+        }
 
         super.process(parentObject, metData, dataParams, auxliaryObjects);
+    }
+
+    private boolean isValidManualValidation(Map<String, String> dataParams) {
+        return dataParams.containsKey(STRING_PARAM_VALIDACION_MANUAL) 
+            && Boolean.TRUE.toString().equalsIgnoreCase(dataParams.get(STRING_PARAM_VALIDACION_MANUAL));
+    }
+
+    private boolean isWelcomeNotificationPendingOrEmpty(Map<String, String> dataParams) {
+        if (!dataParams.containsKey(STRING_PARAM_NOTIFICACION_BIENVENIDA)) {
+            return false;
+        }
+        String notificationValue = dataParams.get(STRING_PARAM_NOTIFICACION_BIENVENIDA);
+        return Boolean.FALSE.toString().equalsIgnoreCase(notificationValue) 
+            || StringUtils.EMPTY.equalsIgnoreCase(notificationValue);
     }
 }

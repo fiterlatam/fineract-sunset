@@ -20,12 +20,7 @@ package org.apache.fineract.portfolio.loanaccount.event;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -58,6 +53,11 @@ public class LoanRejectionGuaranteeEventProcessor extends BaseCustomWebhookEvent
     private final ClientReadPlatformService clientReadPlatformService;
     private final LoanApprovalContactabilityEventProcessor loanApprovalContactabilityEventProcessor;
     private final LoanRepositoryWrapper loanRepositoryWrapper;
+
+    @Override
+    protected String hookName() {
+        return CustomHookEventProcessorEnum.fromClazz(this.getClass().getName()).getHookName();
+    }
 
     @Override
     protected List<Map<String, String>> getSupportedEvents() {
@@ -113,7 +113,6 @@ public class LoanRejectionGuaranteeEventProcessor extends BaseCustomWebhookEvent
         Optional.ofNullable(camposClienteEmpresaYPersona)
                 .filter(c -> detalleGaranta != null && detalleGaranta.getNumeroPagare() != null)
                 .ifPresent(c -> requestBody.put(DOCUMENT_ID_PARAM, detalleGaranta.getNumeroPagare()));
-
     }
 
     private DetalleGarantiaDatatableData getDetalleGarantia(Loan loan) {
