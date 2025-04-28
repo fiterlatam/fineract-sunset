@@ -21,11 +21,6 @@ COMMUNITY
 
 If you are interested in contributing to this project, but perhaps don't quite know how and where to get started, please [join our developer mailing list](http://fineract.apache.org/#contribute), listen into our conversations, chime into threads, and just send us a "Hello!" introduction email; we're a friendly bunch, and look forward to hearing from you.
 
-
-
-
-
-
 REQUIREMENTS
 ============
 * `Java >= 17` (Azul Zulu JVM is tested by our CI on GitHub Actions)
