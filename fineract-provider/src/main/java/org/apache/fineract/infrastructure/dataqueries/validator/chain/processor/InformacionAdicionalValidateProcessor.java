@@ -43,33 +43,35 @@ public class InformacionAdicionalValidateProcessor extends CustomFieldValidation
         return STRING_DATATABLE_INFORMACION_ADICIONAL;
     }
 
-    @Override
     public void process(Object parentObject, DataTableMetaData metData, Map<String, String> dataParams,
             Map<String, Object> auxliaryObjects) {
 
-        if (metData.getDataTableName().equalsIgnoreCase(whoAmI()) && parentObject instanceof Loan loan 
-                && loan.isApproved() 
-                && Boolean.FALSE.equals(loan.isDisbursed())
-                && isValidManualValidation(dataParams)
-                && isWelcomeNotificationPendingOrEmpty(dataParams)) {
-            
-            log.warn("Informacion Adicional - DataTableMetaData: {}", metData.getDataTableName());
+        if (metData.getDataTableName().equalsIgnoreCase(whoAmI())) {
+
+            if (Objects.nonNull(parentObject) && parentObject instanceof Loan) {
+                Loan loanObj = (Loan) parentObject;
+
+                if (loanObj.isApproved() //
+                        && Boolean.FALSE.equals(loanObj.isDisbursed()) //
+                        && dataParams.containsKey(STRING_PARAM_VALIDACION_MANUAL) //
+                        && dataParams.get(STRING_PARAM_VALIDACION_MANUAL).equalsIgnoreCase(Boolean.TRUE.toString()) //
+                        && dataParams.containsKey(STRING_PARAM_NOTIFICACION_BIENVENIDA) //
+                        && (dataParams.get(STRING_PARAM_NOTIFICACION_BIENVENIDA).equalsIgnoreCase(Boolean.FALSE.toString()) //
+                                || dataParams.get(STRING_PARAM_NOTIFICACION_BIENVENIDA).equalsIgnoreCase(StringUtils.EMPTY))) {
+
+                    // TODO Trigger the webhook here
+                    // Populate auxliaryObjects at ReadWriteNonCoreDataServiceImpl Create and Update with webhook object
+                    // Then you can use here
+                    // eg. ReadReportingServiceImpl rep = (ReadReportingServiceImpl) auxliaryObjects;
+                    // if (Objects.nonNull(rep)) { {
+                    // rep.generate();
+                    // }
+
+                    log.warn("Informacion Adicional - DataTableMetaData: " + metData.getDataTableName());
+                }
+            }
         }
 
         super.process(parentObject, metData, dataParams, auxliaryObjects);
-    }
-
-    private boolean isValidManualValidation(Map<String, String> dataParams) {
-        return dataParams.containsKey(STRING_PARAM_VALIDACION_MANUAL) 
-            && Boolean.TRUE.toString().equalsIgnoreCase(dataParams.get(STRING_PARAM_VALIDACION_MANUAL));
-    }
-
-    private boolean isWelcomeNotificationPendingOrEmpty(Map<String, String> dataParams) {
-        if (!dataParams.containsKey(STRING_PARAM_NOTIFICACION_BIENVENIDA)) {
-            return false;
-        }
-        String notificationValue = dataParams.get(STRING_PARAM_NOTIFICACION_BIENVENIDA);
-        return Boolean.FALSE.toString().equalsIgnoreCase(notificationValue) 
-            || StringUtils.EMPTY.equalsIgnoreCase(notificationValue);
     }
 }
