@@ -19,6 +19,14 @@
 
 package org.apache.fineract.portfolio.loanaccount.event;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.LocalDate;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.commands.event.BaseCustomWebhookEventProcessorImpl;
@@ -29,21 +37,11 @@ import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.portfolio.client.data.ClientData;
 import org.apache.fineract.portfolio.client.service.ClientReadPlatformService;
-import org.apache.fineract.portfolio.loanaccount.domain.Loan;
-import org.apache.fineract.portfolio.loanaccount.domain.LoanRepositoryWrapper;
+import org.apache.fineract.portfolio.loanaccount.data.LoanAccountData;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
-
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.time.LocalDate;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 @Component
 @Slf4j
@@ -54,7 +52,6 @@ public class LoanApprovalContactabilityEventProcessor extends BaseCustomWebhookE
     private final JdbcTemplate jdbcTemplate;
     private final LoanReadPlatformService loanReadPlatformService;
     private final ClientReadPlatformService clientReadPlatformService;
-    private final LoanRepositoryWrapper loanRepositoryWrapper;
 
     @Override
     protected String hookName() {
@@ -76,11 +73,7 @@ public class LoanApprovalContactabilityEventProcessor extends BaseCustomWebhookE
 
     public Map<String, Object> generateSuccessResponse(CommandProcessingResult result) {
         Map<String, Object> requestBody = new HashMap<>();
-        Loan loan = loanRepositoryWrapper.findOneWithNotFoundDetection(result.getLoanId(), true);
-
-        if (Boolean.FALSE.equals(loan.isApproved()) || loan.isDisbursed()) {
-            return Collections.emptyMap();
-        }
+        LoanAccountData loan = loanReadPlatformService.retrieveOne(result.getLoanId());
 
         // Check if client is Persona o Empresa
         ClientData clientData = clientReadPlatformService.retrieveOne(result.getClientId());
@@ -120,7 +113,7 @@ public class LoanApprovalContactabilityEventProcessor extends BaseCustomWebhookE
         return requestBody;
     }
 
-    private ValidacionContactaDatatableData getValidacionContacta(Loan loan) {
+    private ValidacionContactaDatatableData getValidacionContacta(LoanAccountData loan) {
         ValidacionContactaDatatableData validacionContactaData = ValidacionContactaDatatableData.builder().build();
 
         try {
