@@ -49,7 +49,7 @@ public class AccrualBasedAccountingProcessorForLoan implements AccountingProcess
     public void createJournalEntriesForLoan(final LoanDTO loanDTO) {
         final GLClosure latestGLClosure = this.helper.getLatestClosureByBranch(loanDTO.getOfficeId());
 
-        if(Objects.nonNull(latestGLClosure) && configurationDomainService.executeGenerateGLEntries()) {
+        if (Objects.nonNull(latestGLClosure) && configurationDomainService.executeGenerateGLEntries()) {
             final Office office = this.helper.getOfficeById(loanDTO.getOfficeId());
             for (final LoanTransactionDTO loanTransactionDTO : loanDTO.getNewLoanTransactions()) {
                 final LocalDate transactionDate = loanTransactionDTO.getTransactionDate();
@@ -66,8 +66,8 @@ public class AccrualBasedAccountingProcessorForLoan implements AccountingProcess
                 }
 
                 /***
-                 * Handle repayments, loan refunds, repayments at disbursement and reversal of Repayments and Repayments at
-                 * disbursement (except charge adjustment)
+                 * Handle repayments, loan refunds, repayments at disbursement and reversal of Repayments and Repayments
+                 * at disbursement (except charge adjustment)
                  ***/
                 else if ((loanTransactionDTO.getTransactionType().isRepaymentType()
                         && !loanTransactionDTO.getTransactionType().isChargeAdjustment())
