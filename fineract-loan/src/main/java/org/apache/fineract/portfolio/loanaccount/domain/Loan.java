@@ -8417,7 +8417,7 @@ public class Loan extends AbstractAuditableWithUTCDateTimeCustom {
     }
 
     public boolean containsRevolvingLoan() {
-        return  this.getLoanProduct().getName().contains(LoanProductType.CREDITO_ROTATIVO.getCode())
+        return this.getLoanProduct().getName().contains(LoanProductType.CREDITO_ROTATIVO.getCode())
                 || this.getLoanProduct().getName().contains(LoanProductType.NANO_CREDITO.getCode());
     }
 }
