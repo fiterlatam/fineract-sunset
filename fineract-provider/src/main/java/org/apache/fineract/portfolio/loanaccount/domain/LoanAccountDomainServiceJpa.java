@@ -239,7 +239,7 @@ public class LoanAccountDomainServiceJpa implements LoanAccountDomainService {
             this.noteRepository.save(note);
         }
 
-        if (this.configurationDomainService.executeGenerateGLEntries()) {
+        if(this.configurationDomainService.executeGenerateGLEntries()) {
             postJournalEntries(loan, existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, isLoanToLoanTransfer);
         }
 
