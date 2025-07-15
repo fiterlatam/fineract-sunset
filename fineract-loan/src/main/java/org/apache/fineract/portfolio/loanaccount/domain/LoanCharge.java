@@ -159,6 +159,9 @@ public class LoanCharge extends AbstractAuditableWithUTCDateTimeCustom {
     @Column(name = "expire_date", nullable = true)
     private LocalDate expDate;
 
+    @Column(name = "orig_charge_name", nullable = true)
+    private String origChargeName;
+
     @Column(name = "insurance_name", nullable = true)
     private String insuranceName;
 
@@ -1413,7 +1416,7 @@ public class LoanCharge extends AbstractAuditableWithUTCDateTimeCustom {
                     customAmout = customAmout.add(customCharge.getFeeBaseAmount());
                 }
             }
-        } else if (this.isCustomFlatDistributedCharge()) {
+        } else if (this.isCustomFlatDistributedCharge() || this.loan.isMigratedLoan()) {
             BigDecimal amountToAdd = this.amountOrPercentage;
             if (!this.installmentCharges().isEmpty()) {
                 LoanInstallmentCharge installmentCharge = this.getInstallmentLoanCharge(installmentNumber);
