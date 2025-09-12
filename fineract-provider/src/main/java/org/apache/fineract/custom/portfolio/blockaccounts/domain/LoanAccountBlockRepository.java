@@ -16,19 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.fineract.custom.infrastructure.dataqueries.data;
+package org.apache.fineract.custom.portfolio.blockaccounts.domain;
 
-import lombok.Builder;
-import lombok.Getter;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
-@Builder
-@Getter
-public class DetalleGarantaDatatableData {
+@Repository
+public interface LoanAccountBlockRepository extends JpaRepository<LoanAccountBlock, Long> {
 
-    private boolean aplicaGarantia;
-    private Object fechaRegistroGarantia;
-    private String numeroGarantia;
-    private String numeroPagare;
-    private String tipoGarantia;
-    private Long tipoGarantiaId;
+    @Query(value = "SELECT ab FROM LoanAccountBlock ab WHERE ab.loan.id = :loanId AND ab.active = true")
+    Optional<LoanAccountBlock> retrieveByLoanIdAndStatusActive(@Param(value = "loanId") Long loanId);
 }

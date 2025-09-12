@@ -16,20 +16,20 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+package org.apache.fineract.custom.portfolio.blockaccounts.data;
 
-package org.apache.fineract.portfolio.loanaccount.service;
+import java.time.LocalDate;
+import java.util.List;
+import lombok.Builder;
+import lombok.Data;
 
-import java.util.Collection;
-import org.apache.fineract.infrastructure.clientblockingreasons.data.BlockingReasonsData;
-import org.apache.fineract.portfolio.loanaccount.data.LoanBlockingReasonData;
+@Data
+@Builder
+public class LoanAccountBlockData {
 
-public interface LoanBlockReadPlatformService {
-
-    Collection<LoanBlockingReasonData> retrieveLoanBlockingReason(Long loanId);
-
-    BlockingReasonsData retrieveLoanBlockingSettings(String level, String nameOfReason);
-
-    Collection<LoanBlockingReasonData> retrieveAllLoanWithBlockingReason(Long blockingReasonId);
-
-    Collection<LoanBlockingReasonData> retrieveAllLoanWithClientAndBlockingReason(Long clientId, Long blockingReasonId);
+    private Long loanId;
+    private Long blockReasonId;
+    private String blockReasonName;
+    private LocalDate providedDate;
+    private List<LoanAccountBlockComponentEnum> loanAccountBlockComponentEnumList;
 }

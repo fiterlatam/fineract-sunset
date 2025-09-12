@@ -16,20 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+package org.apache.fineract.custom.portfolio.blockaccounts.service;
 
-package org.apache.fineract.portfolio.loanaccount.service;
+import org.apache.fineract.infrastructure.core.api.JsonCommand;
+import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 
-import java.util.Collection;
-import org.apache.fineract.infrastructure.clientblockingreasons.data.BlockingReasonsData;
-import org.apache.fineract.portfolio.loanaccount.data.LoanBlockingReasonData;
+public interface LoanAccountBlockWritePlatformService {
 
-public interface LoanBlockReadPlatformService {
+    CommandProcessingResult crateLoanAccountBlock(JsonCommand command);
 
-    Collection<LoanBlockingReasonData> retrieveLoanBlockingReason(Long loanId);
-
-    BlockingReasonsData retrieveLoanBlockingSettings(String level, String nameOfReason);
-
-    Collection<LoanBlockingReasonData> retrieveAllLoanWithBlockingReason(Long blockingReasonId);
-
-    Collection<LoanBlockingReasonData> retrieveAllLoanWithClientAndBlockingReason(Long clientId, Long blockingReasonId);
+    CommandProcessingResult updateLoanAccountBlock(JsonCommand command);
 }
