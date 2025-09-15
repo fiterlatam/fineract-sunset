@@ -43,6 +43,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class LoanAccountBlockReadPlatformServiceImpl implements LoanAccountBlockReadPlatformService {
 
+    public static final String STR_CASTIGO = "CASTIGO";
     private final LoanAccountBlockRepository loanAccountBlockRepository;
     private final LoanAccountBlockMapper loanAccountBlockMapper;
 
@@ -56,6 +57,13 @@ public class LoanAccountBlockReadPlatformServiceImpl implements LoanAccountBlock
     }
 
     @Override
+    public LoanAccountBlockDTO retrieveByLoanIdWithoutException(Long loanId) {
+        Optional<LoanAccountBlock> loanAccountBlock = loanAccountBlockRepository.retrieveByLoanIdAndStatusActive(loanId);
+        return loanAccountBlock.map(loanAccountBlockMapper::toDto).orElse(null);
+
+    }
+
+    @Override
     public LoanAccountBlockData checkBlockAccountComponents(Long loanId, LocalDate givenDate) {
         List<LoanAccountBlockComponentEnum> blockedComponents = new ArrayList<>();
 
@@ -64,7 +72,7 @@ public class LoanAccountBlockReadPlatformServiceImpl implements LoanAccountBlock
         if (loanAccountBlockOpt.isPresent()) {
             LoanAccountBlock loanAccountBlock = loanAccountBlockOpt.get();
 
-            if ("CASTIGO".equalsIgnoreCase(loanAccountBlock.getBlockingReasonSetting().getNameOfReason())
+            if (STR_CASTIGO.equalsIgnoreCase(loanAccountBlock.getBlockingReasonSetting().getNameOfReason())
                     && !DateUtils.getLocalDateOfTenant().isBefore(loanAccountBlock.getApplicationDate())) {
 
                 if (Objects.nonNull(loanAccountBlock.getAccelerate()) && loanAccountBlock.getAccelerate()) {
