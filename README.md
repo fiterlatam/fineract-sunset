@@ -17,7 +17,7 @@ to start contributing to this project in the online web-based IDE GitPod.io righ
 It's of course also possible to contribute with a "traditional" local development environment (see below).
 
 COMMUNITY
-=========
+==========
 
 If you are interested in contributing to this project, but perhaps don't quite know how and where to get started, please [join our developer mailing list](http://fineract.apache.org/#contribute), listen into our conversations, chime into threads, and just send us a "Hello!" introduction email; we're a friendly bunch, and look forward to hearing from you.
 
