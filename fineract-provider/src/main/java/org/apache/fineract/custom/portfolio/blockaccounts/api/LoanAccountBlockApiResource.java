@@ -26,6 +26,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
@@ -62,6 +63,18 @@ public class LoanAccountBlockApiResource {
         return apiJsonSerializerService.serialize(result);
     }
 
+    @POST
+    @Path("{loanId}/unblock")
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    public String unblockBlockAccount(@PathParam("loanId") final Long loanId, final String apiRequestBodyAsJson) {
+        platformUserRightsContext.isAuthenticated();
+        final CommandWrapper commandWrapper = new CommandWrapperBuilder().withLoanId(loanId).withJson(apiRequestBodyAsJson)
+                .unblockLoanBlockAccount(loanId).build();
+        CommandProcessingResult result = this.commandsSourceWritePlatformService.logCommandSource(commandWrapper);
+        return apiJsonSerializerService.serialize(result);
+    }
+
     @GET
     @Path("{loanId}")
     @Consumes({ MediaType.APPLICATION_JSON })
@@ -69,6 +82,16 @@ public class LoanAccountBlockApiResource {
     public String getBlockAccounts(@PathParam("loanId") Long loanId) {
         platformUserRightsContext.isAuthenticated();
         LoanAccountBlockDTO loanAccountBlockDTO = loanAccountBlockReadPlatformService.retrieveByLoanId(loanId);
+        return apiJsonSerializerService.serialize(loanAccountBlockDTO);
+    }
+
+    @GET
+    @Path("{loanId}/history")
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    public String getBlockAccountsHistory(@PathParam("loanId") Long loanId) {
+        platformUserRightsContext.isAuthenticated();
+        List<LoanAccountBlockDTO> loanAccountBlockDTO = loanAccountBlockReadPlatformService.retrieveHistoryByLoanId(loanId);
         return apiJsonSerializerService.serialize(loanAccountBlockDTO);
     }
 }
