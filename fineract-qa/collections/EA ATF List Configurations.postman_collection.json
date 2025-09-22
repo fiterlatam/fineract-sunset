@@ -1,9 +1,10 @@
 {
     "info": {
-        "_postman_id": "60ed4d26-d303-4e9d-842e-55e8d7c33522",
+        "_postman_id": "5507c103-16b1-4dc0-a486-d026b7930e6a",
         "name": "EA ATF List Configurations",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-        "_exporter_id": "26949565"
+        "_exporter_id": "34930034",
+        "_collection_link": "https://jacobo-vargas.postman.co/workspace/WORK~69da17f8-6926-42b5-8ba0-23bc6d424a86/collection/34930034-5507c103-16b1-4dc0-a486-d026b7930e6a?action=share&source=collection_link&creator=34930034"
     },
     "item": [
         {
@@ -311,6 +312,132 @@
                         "api",
                         "v1",
                         "codes"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "getConfiguration",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "const response = pm.response.json();\r",
+                            "\r",
+                            "// Check if the response status code is 200\r",
+                            "pm.test(\"Status code is 200\", function () {\r",
+                            "    pm.expect(pm.response.code).to.equal(200);\r",
+                            "});\r",
+                            "\r",
+                            "// Assign the 'id' from the response to the environment variable 'configurationTests'\r",
+                            "pm.environment.set(\"configurationTests\", response.id);\r",
+                            "\r",
+                            ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {}
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [
+                    {
+                        "key": "Authorization",
+                        "value": "{{authorization_token}}",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Fineract-Platform-TenantId",
+                        "value": "default",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Fineract-Platform-TenantId",
+                        "value": "default",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Basic bWlmb3M6cGFzc3dvcmQ=",
+                        "type": "text"
+                    }
+                ],
+                "url": {
+                    "raw": "{{fineract-backend-server}}/fineract-provider/api/v1/configurations/name/loan-blockaccount-save-backdated-component",
+                    "host": [
+                        "{{fineract-backend-server}}"
+                    ],
+                    "path": [
+                        "fineract-provider",
+                        "api",
+                        "v1",
+                        "configurations",
+                        "name",
+                        "loan-blockaccount-save-backdated-component"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Edit configuration Test",
+            "request": {
+                "method": "PUT",
+                "header": [
+                    {
+                        "key": "Authorization",
+                        "value": "{{authorization_token}}",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Fineract-Platform-TenantId",
+                        "value": "default",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Fineract-Platform-TenantId",
+                        "value": "default",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Basic bWlmb3M6cGFzc3dvcmQ=",
+                        "type": "text"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\r\n    \"enabled\": true,\r\n    \"value\": 1\r\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "url": {
+                    "raw": "{{fineract-backend-server}}/fineract-provider/api/v1/configurations/{{configurationTests}}",
+                    "host": [
+                        "{{fineract-backend-server}}"
+                    ],
+                    "path": [
+                        "fineract-provider",
+                        "api",
+                        "v1",
+                        "configurations",
+                        "{{configurationTests}}"
                     ]
                 }
             },

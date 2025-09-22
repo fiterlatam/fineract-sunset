@@ -1,14 +1,14 @@
 {
     "info": {
         "_postman_id": "9e5815b0-0299-4b3b-ba38-ee78f9fc35d6",
-        "name": "EA Loans AccountBlock Disburse",
+        "name": "EA Loans AccountBlock Accrual Interest",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         "_exporter_id": "34930034",
         "_collection_link": "https://jacobo-vargas.postman.co/workspace/WORK~69da17f8-6926-42b5-8ba0-23bc6d424a86/collection/34930034-9e5815b0-0299-4b3b-ba38-ee78f9fc35d6?action=share&source=collection_link&creator=34930034"
     },
     "item": [
         {
-            "name": "Add Client Persona Copy 2",
+            "name": "Add Client Persona Copy 3",
             "event": [
                 {
                     "listen": "test",
@@ -136,7 +136,7 @@
             "response": []
         },
         {
-            "name": "Add Credito Rotativo Loan Copy 2",
+            "name": "Add Credito Rotativo Loan Copy 3",
             "event": [
                 {
                     "listen": "test",
@@ -269,7 +269,7 @@
             "response": []
         },
         {
-            "name": "Approve  Loan - Unknown Copy 3",
+            "name": "Approve  Loan - Unknown Copy 4",
             "request": {
                 "method": "POST",
                 "header": [
@@ -316,7 +316,7 @@
             "response": []
         },
         {
-            "name": "Disburse Money - First time success",
+            "name": "Disburse Money - First time success Copy",
             "event": [
                 {
                     "listen": "test",
@@ -375,7 +375,7 @@
             "response": []
         },
         {
-            "name": "Block Account Copy",
+            "name": "Block Account Copy 2",
             "event": [
                 {
                     "listen": "test",
@@ -430,6 +430,68 @@
                         "v1",
                         "blockaccount",
                         "{{loanId}}"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Get transactions",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test(\"Status code is 200\", function () {\r",
+                            "    pm.expect(pm.response.code).to.equal(200);\r",
+                            "});\r",
+                            "\r",
+                            "pm.test(\"Number of transactions is 1\", function () {\r",
+                            "    const responseJson = pm.response.json();\r",
+                            "    pm.expect(responseJson.transactions).to.have.lengthOf(1);\r",
+                            "});\r",
+                            ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {}
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [
+                    {
+                        "key": "Authorization",
+                        "value": "{{authorization_token}}",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Fineract-Platform-TenantId",
+                        "value": "default",
+                        "type": "text"
+                    }
+                ],
+                "url": {
+                    "raw": "{{fineract-backend-server}}/fineract-provider/api/v1/loans/{{loanId}}?associations=all&exclude=guarantors,futureSchedule",
+                    "host": [
+                        "{{fineract-backend-server}}"
+                    ],
+                    "path": [
+                        "fineract-provider",
+                        "api",
+                        "v1",
+                        "loans",
+                        "{{loanId}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "associations",
+                            "value": "all"
+                        },
+                        {
+                            "key": "exclude",
+                            "value": "guarantors,futureSchedule"
+                        }
                     ]
                 }
             },

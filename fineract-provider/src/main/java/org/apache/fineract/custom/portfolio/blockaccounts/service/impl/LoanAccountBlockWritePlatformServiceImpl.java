@@ -27,6 +27,7 @@ import jakarta.ws.rs.NotFoundException;
 import java.lang.reflect.Type;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,6 +41,7 @@ import org.apache.fineract.custom.portfolio.blockaccounts.domain.LoanAccountBloc
 import org.apache.fineract.custom.portfolio.blockaccounts.service.LoanAccountBlockWritePlatformService;
 import org.apache.fineract.infrastructure.clientblockingreasons.domain.BlockingReasonSetting;
 import org.apache.fineract.infrastructure.clientblockingreasons.domain.BlockingReasonSettingsRepository;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
@@ -53,6 +55,7 @@ import org.apache.fineract.portfolio.loanaccount.data.ScheduleGeneratorDTO;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepository;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanSubStatus;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
 import org.apache.fineract.portfolio.loanaccount.service.LoanAssembler;
 import org.apache.fineract.portfolio.loanaccount.service.LoanUtilService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanWritePlatformServiceJpaRepositoryImpl;
@@ -71,6 +74,7 @@ public class LoanAccountBlockWritePlatformServiceImpl implements LoanAccountBloc
     private final LoanUtilService loanUtilService;
     private final LoanWritePlatformServiceJpaRepositoryImpl loanWritePlatformService;
     private final LoanAssembler loanAssembler;
+    private final ConfigurationDomainService configurationService;
 
     @Override
     public CommandProcessingResult createLoanAccountBlock(JsonCommand command) {
@@ -95,7 +99,7 @@ public class LoanAccountBlockWritePlatformServiceImpl implements LoanAccountBloc
 
         Loan loan = this.loanAssembler.assembleFrom(loanId);
 
-        validateCreation(loanId, applicationDate, loan, businessDate);
+        boolean withoutActions = validateCreation(loanId, applicationDate, loan, businessDate);
 
         loan.setLoanSubStatus(LoanSubStatus.BLOCKED.getValue());
         loan = loanRepository.saveAndFlush(loan);
@@ -104,6 +108,14 @@ public class LoanAccountBlockWritePlatformServiceImpl implements LoanAccountBloc
         loanAccountBlock = new LoanAccountBlock().createLoanAccountBlock(loan, blockingReasonSetting, applicationDate, accelerate,
                 freezeCurrentInterest, freezeInterestArrears, freezeLifeInsurance, freezeMypime, active, LoanAccountBlockAction.BLOCK,
                 null);
+
+        if (withoutActions && !configurationService.getLoanBlockTestEnabled()) {
+            loanAccountBlock.setAccelerate(false);
+            loanAccountBlock.setFreezeCurrentInterest(false);
+            loanAccountBlock.setFreezeInterestArrears(false);
+            loanAccountBlock.setFreezeLifeInsurance(false);
+            loanAccountBlock.setFreezeMypime(false);
+        }
 
         loanAccountBlock = loanAccountBlockRepository.saveAndFlush(loanAccountBlock);
 
@@ -250,7 +262,7 @@ public class LoanAccountBlockWritePlatformServiceImpl implements LoanAccountBloc
                 .build();
     }
 
-    private void validateCreation(final Long loanId, LocalDate applicationDate, Loan loan, LocalDate businessDate) {
+    private boolean validateCreation(final Long loanId, LocalDate applicationDate, Loan loan, LocalDate businessDate) {
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>(1);
         Optional<LoanAccountBlock> existingBlock = loanAccountBlockRepository.retrieveByLoanIdAndStatusActive(loanId);
 
@@ -262,18 +274,32 @@ public class LoanAccountBlockWritePlatformServiceImpl implements LoanAccountBloc
                     dataValidationErrors);
         }
 
-        if (businessDate.isAfter(applicationDate)) {
-            boolean isNotApproved = loan.getLoanTransactions().stream()
-                    .anyMatch(item -> item.getTypeOf().isDisbursement() && item.getTransactionDate().isAfter(applicationDate));
-            if (isNotApproved) {
-                ApiParameterError apiParameterError = ApiParameterError.parameterError("disbursement.after.selected.date",
-                        "The block could not be applied because there are disbursements after the selected application date.",
-                        "applicationDate", applicationDate);
-                dataValidationErrors.add(apiParameterError);
-                throw new PlatformApiDataValidationException("validation.msg.validation.errors.exist",
-                        "There are disbursements after selected application date.", dataValidationErrors);
+        /* Transaction is in the past */
+        if (applicationDate.isBefore(businessDate)) {
+
+            Optional<LocalDate> lastDisbursement = loan.getLoanTransactions().stream().filter(txn -> txn.getTypeOf().isDisbursement())
+                    .map(LoanTransaction::getTransactionDate).max(Comparator.naturalOrder());
+
+            if (lastDisbursement.isPresent()) {
+                LocalDate disbursementDate = lastDisbursement.get();
+
+                if (applicationDate.isAfter(disbursementDate)) { // CASE 1: PASS WITHOUT ACTIONS
+                    return true;
+                } else if (applicationDate.isBefore(disbursementDate)) { // CASE 2: FAIL
+                    ApiParameterError apiParameterError = ApiParameterError.parameterError("disbursement.after.selected.date",
+                            "The block could not be applied because there are disbursements after the selected application date.",
+                            "applicationDate", applicationDate);
+                    dataValidationErrors.add(apiParameterError);
+                    throw new PlatformApiDataValidationException("validation.msg.validation.errors.exist",
+                            "There are disbursements after selected application date.", dataValidationErrors);
+                } else {
+                    log.info("Selected application date it's equals to last disbursement date, applying with actions.");
+                    return false;
+                }
             }
         }
+
+        return false;
 
     }
 
