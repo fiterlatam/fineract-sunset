@@ -18,7 +18,12 @@
  */
 package org.apache.fineract.custom.portfolio.blockaccounts.api;
 
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
@@ -45,7 +50,11 @@ import org.springframework.stereotype.Controller;
 @Path("/v1/blockaccount")
 @Component
 @Controller
-@Tag(name = "blockaccount", description = "blockaccount")
+@Tag(name = "blockaccount", description = """
+        Las cuentas de préstamo pueden tener algunos componentes bloqueados por diferentes motivos. Estas interfaces
+        interactúan con acciones como bloquear, editar y desbloquear una cuenta de préstamo.
+        Puede bloquear componentes como Desembolso, Intereses, Mora, Seguro de Vida, Seguro de Vida Nano, MiPyme y GAC.
+        """)
 @RequiredArgsConstructor
 public class LoanAccountBlockApiResource {
 
@@ -58,6 +67,8 @@ public class LoanAccountBlockApiResource {
     @Path("{loanId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
+    @Operation(summary = "Bloquear cuenta de préstamo", description = "Crea un bloqueo sobre la cuenta de préstamo especificada por loanId.", requestBody = @RequestBody(required = true, content = @Content(schema = @Schema(implementation = LoanAccountBlockApiResourceSwagger.PostLoanAccountBlockRequest.class))), responses = {
+            @ApiResponse(responseCode = "200", description = "Bloqueo creado correctamente", content = @Content(schema = @Schema(implementation = LoanAccountBlockApiResourceSwagger.PostLoanAccountBlockResponse.class))) })
     public String addBlockAccount(@PathParam("loanId") final Long loanId, final String apiRequestBodyAsJson) {
         platformUserRightsContext.isAuthenticated();
         final CommandWrapper commandWrapper = new CommandWrapperBuilder().withLoanId(loanId).withJson(apiRequestBodyAsJson)
@@ -70,6 +81,8 @@ public class LoanAccountBlockApiResource {
     @Path("{loanId}/unblock")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
+    @Operation(summary = "Desbloquear cuenta de préstamo", description = "Elimina un bloqueo activo de la cuenta de préstamo.", requestBody = @RequestBody(required = true, content = @Content(schema = @Schema(implementation = LoanAccountBlockApiResourceSwagger.PostUnblockLoanAccountRequest.class))), responses = {
+            @ApiResponse(responseCode = "200", description = "Cuenta desbloqueada", content = @Content(schema = @Schema(implementation = LoanAccountBlockApiResourceSwagger.PostUnblockLoanAccountResponse.class))) })
     public String unblockBlockAccount(@PathParam("loanId") final Long loanId, final String apiRequestBodyAsJson) {
         platformUserRightsContext.isAuthenticated();
         final CommandWrapper commandWrapper = new CommandWrapperBuilder().withLoanId(loanId).withJson(apiRequestBodyAsJson)
@@ -82,6 +95,8 @@ public class LoanAccountBlockApiResource {
     @Path("{loanId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
+    @Operation(summary = "Obtener bloqueo activo", description = "Devuelve los datos del bloqueo activo para el préstamo dado.", responses = {
+            @ApiResponse(responseCode = "200", description = "Datos del bloqueo", content = @Content(schema = @Schema(implementation = LoanAccountBlockApiResourceSwagger.GetLoanAccountBlockResponse.class))) })
     public String getBlockAccounts(@PathParam("loanId") Long loanId) {
         platformUserRightsContext.isAuthenticated();
         LoanAccountBlockDTO loanAccountBlockDTO = loanAccountBlockReadPlatformService.retrieveByLoanId(loanId);
@@ -95,6 +110,8 @@ public class LoanAccountBlockApiResource {
     @Path("{loanId}/history")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
+    @Operation(summary = "Historial de bloqueos", description = "Lista el historial completo de bloqueos para el préstamo.", responses = {
+            @ApiResponse(responseCode = "200", description = "Historial recuperado", content = @Content(schema = @Schema(implementation = LoanAccountBlockApiResourceSwagger.GetLoanAccountBlockHistoryResponse.class))) })
     public String getBlockAccountsHistory(@PathParam("loanId") Long loanId) {
         platformUserRightsContext.isAuthenticated();
         List<LoanAccountBlockDTO> loanAccountBlockDTO = loanAccountBlockReadPlatformService.retrieveHistoryByLoanId(loanId);
@@ -105,6 +122,8 @@ public class LoanAccountBlockApiResource {
     @Path("{loanAccountBlockId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
+    @Operation(summary = "Actualizar bloqueo de cuenta", description = "Actualiza los datos de un bloqueo existente.", requestBody = @RequestBody(required = true, content = @Content(schema = @Schema(implementation = LoanAccountBlockApiResourceSwagger.PutLoanAccountBlockRequest.class))), responses = {
+            @ApiResponse(responseCode = "200", description = "Bloqueo actualizado", content = @Content(schema = @Schema(implementation = LoanAccountBlockApiResourceSwagger.PutLoanAccountBlockResponse.class))) })
     public String updateBlockAccount(@PathParam("loanAccountBlockId") final Long loanAccountBlockId,
             @Parameter(hidden = true) final String apiRequestBodyAsJson) {
         platformUserRightsContext.isAuthenticated();
