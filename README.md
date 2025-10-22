@@ -528,4 +528,4 @@ More details of the project can be found at <https://cwiki.apache.org/confluence
 
 Force redeploy
 ============
-Just change this text and commit!
+Just change this text and commit.
