@@ -28,7 +28,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
@@ -65,14 +64,21 @@ public class ApplyGACToOverdueLoanInstallmentTasklet implements Tasklet {
     @Qualifier(TaskExecutorConstant.CONFIGURABLE_TASK_EXECUTOR_BEAN_NAME)
     private final ThreadPoolTaskExecutor taskExecutor;
 
+    int threadPoolSize = 0;
+    int batchSize = 0;
+
     @Override
     public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
+        this.threadPoolSize = Integer.parseInt((String) chunkContext.getStepContext().getJobParameters().get("thread-pool-size"));
+        this.batchSize = Integer.parseInt((String) chunkContext.getStepContext().getJobParameters().get("batch-size"));
+
         Long maxLoanId = 0L;
         final Long penaltyWaitPeriodValue = configurationDomainService.retrievePenaltyWaitPeriod();
         final Boolean backdatePenalties = configurationDomainService.isBackdatePenaltiesEnabled();
 
         long start = System.currentTimeMillis();
         log.info("Starting Apply GAC to Overdue Loans job");
+        log.info("GAC Job is Using {} threads and pagesize (loans per thread) = {} ", this.threadPoolSize, this.batchSize);
         log.info("Reading overdue loan scheduled installments for processing!");
         List<OverdueLoanScheduleData> overdueLoanScheduledInstallments = loanReadPlatformService
                 .retrieveAllLoansWithOverdueInstallments(penaltyWaitPeriodValue, backdatePenalties, 999999999, maxLoanId);
@@ -140,10 +146,11 @@ public class ApplyGACToOverdueLoanInstallmentTasklet implements Tasklet {
 
     private void processOverdueLoansInstallmentsInBatch(Map<Long, Collection<OverdueLoanScheduleData>> overdueScheduleData,
             List<Throwable> exceptions) {
-        ExecutorService executor = Executors.newFixedThreadPool(3);
+
+        ExecutorService executor = Executors.newFixedThreadPool(this.threadPoolSize);
 
         // Sort collection by loan_id descending to process higher loan ids first
-        int batchSize = 100;
+        int batchSize = this.batchSize;
         List<Long> loanIds = new ArrayList<>(overdueScheduleData.keySet());
         loanIds.sort(Collections.reverseOrder());
 
@@ -157,7 +164,6 @@ public class ApplyGACToOverdueLoanInstallmentTasklet implements Tasklet {
 
         for (List<Long> batch : batches) {
 
-            // Capture o contexto 1 vez por task
             FineractContext context = ThreadLocalContextUtil.getContext();
 
             Callable<Void> task = () -> {
@@ -171,8 +177,8 @@ public class ApplyGACToOverdueLoanInstallmentTasklet implements Tasklet {
                             overdueScheduleData.remove(loanId);
 
                         } catch (Exception e) {
-                            log.error("Erro procesando loan {}: {}", loanId, e.getMessage(), e);
-                            throw e;
+                            log.error("Error processing loan {}: {}", loanId, e.getMessage(), e);
+                            exceptions.add(e);
                         }
                     }
 
@@ -185,11 +191,12 @@ public class ApplyGACToOverdueLoanInstallmentTasklet implements Tasklet {
             futures.add(taskExecutor.submit(task));
         }
 
-        try {
-            executor.shutdown();
-            executor.awaitTermination(3, TimeUnit.HOURS);
-        } catch (InterruptedException e) {
-            exceptions.add(e);
+        for (Future<Void> f : futures) {
+            try {
+                f.get();
+            } catch (Exception e) {
+                exceptions.add(e);
+            }
         }
     }
 }

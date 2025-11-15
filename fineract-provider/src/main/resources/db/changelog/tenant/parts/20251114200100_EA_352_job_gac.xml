@@ -35,4 +35,19 @@
         </sql>
     </changeSet>
 
+    <changeSet id="20" author="fineract">
+        <sql>
+            <![CDATA[
+                DELETE FROM job_parameters WHERE job_id = 57;
+
+                INSERT INTO job_parameters
+                (job_id, parameter_name, parameter_value)
+                VALUES(57, 'batch-size', '50');
+
+                INSERT INTO job_parameters
+                (job_id, parameter_name, parameter_value)
+                VALUES(57, 'thread-pool-size', '20');
+            ]]>
+        </sql>
+    </changeSet>
 </databaseChangeLog>
