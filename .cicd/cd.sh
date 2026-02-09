@@ -39,11 +39,6 @@ helm package \
       --set ingress.privateIp="$FINERACT_INGRESS_PRIVATE_IP" \
       --set ingress.frontendPort="$FINERACT_INGRESS_FRONTEND_PORT" \
       \
-      --set deployment.useSpotNode="$USE_SPOT_NODE" \
-      \
-      --set deployment.agentpool="$ARM_AKS_AGENT_POOL" \
-      --set podDisruptionBudgets.enabled="$ENABLED_POD_DISRUPTION_BUDGETS" \
-      \
       --set env.OTEL_SERVICE_NAME="$OTEL_SERVICE_NAME" \
       --set env.FINERACT_INSECURE_HTTP_CLIENT="$FINERACT_INSECURE_HTTP_CLIENT" \
       --set env.FINERACT_MANAGEMENT_METRICS_TAGS_APPLICATION="$FINERACT_MANAGEMENT_METRICS_TAGS_APPLICATION" \
@@ -90,6 +85,13 @@ helm package \
       --set env.JAVA_HOME="$JAVA_HOME" \
       --set env.TZ="$TZ" \
       --set env.FINERACT_SERVER_PORT="$FINERACT_SERVER_PORT" \
+      \
+      --set autoscaling.enabled="$FINERACT_K8S_HPA_ENABLE" \
+      \
+      --set deployment.useSpotNode="$FINERACT_USE_SPOT_NODE" \
+      \
+      --set deployment.nodeSelector.agentpool="$FINERACT_ARM_AKS_AGENT_POOL" \
+      --set podDisruptionBudgets.enabled="$FINERACT_ENABLED_POD_DISRUPTION_BUDGETS" \
       \
       --set deployment.resources.limits.cpu="$POD_LIMITS_CPU" \
       --set deployment.resources.limits.memory="$POD_LIMITS_MEMORY" \
