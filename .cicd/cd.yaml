@@ -2,7 +2,7 @@ trigger:
   batch: true
   tags:
     include:
-      - f*
+      - v*
 
 pr: none
 
@@ -12,10 +12,10 @@ resources:
     - repository: common
       type: git
       name: "Incursor/incursor-back"
-      ref: refs/heads/feat/ynorena/fineract-ci-cd
+      ref: refs/heads/main
 
 variables:
   - template: .cicd/variables/common.yaml@common
 
 stages:
-  - template: .cicd/stages/fineract/backend/cd.yaml@common
+  - template: .cicd/stages/java/cd.yaml@common
