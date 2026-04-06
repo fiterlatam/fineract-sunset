@@ -55,7 +55,7 @@ jobs:
           COMMIT_HASH: ${{ steps.short-commit-message.outputs.commit_hash }}
 
         run: |
-          ./gradlew --no-daemon --console=plain :fineract-provider:clean :fineract-provider:build :fineract-provider:jibDockerBuild -x test -x cucumber -x spotlessCheck -x rat -x checkstyleMain
+          ./gradlew --no-daemon --console=plain :fineract-provider:clean :fineract-provider:build :fineract-provider:jibDockerBuild -x test -x cucumber -x spotlessCheck -x rat -x checkstyleMain -x spotbugsMain
           docker tag fineract:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:$COMMIT_HASH
